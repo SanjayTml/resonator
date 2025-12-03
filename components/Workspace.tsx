@@ -1,12 +1,16 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { VisualizerElement, ElementType, AudioSourceType, AnimationKeyframe, DragMode, SelectionBox, Alignment } from '../types';
-import { hexToHSL, hslToHex, generateMergedElement, generateSubtractedElement, interpolateColor } from './workspace/utils';
+import React, { useState, useRef, useEffect } from 'react';
+import { VisualizerElement, ElementType, DragMode, SelectionBox, Alignment } from '../types';
+import { hexToHSL, generateMergedElement, generateSubtractedElement } from './workspace/utils';
 import WorkspaceHeader from './workspace/WorkspaceHeader';
 import WorkspaceLayers from './workspace/WorkspaceLayers';
 import WorkspaceFooter from './workspace/WorkspaceFooter';
 import WorkspaceProperties from './workspace/WorkspaceProperties';
 import WorkspaceCanvas from './workspace/WorkspaceCanvas';
 import ContextMenu from './workspace/ContextMenu';
+import useHistoryManager from './workspace/hooks/useHistoryManager';
+import useAudioEngine from './workspace/hooks/useAudioEngine';
+import { findElementById, updateElementInList, removeElementFromList } from './workspace/elementTree';
+import { interpolateKeyframes } from './workspace/animation';
 
 interface WorkspaceProps {
   onClose: () => void;
@@ -26,10 +30,27 @@ interface EditPointTarget {
 }
 
 const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
-  // --- State ---
-  const [elements, setElements] = useState<VisualizerElement[]>([]);
-  const [history, setHistory] = useState<VisualizerElement[][]>([]);
-  const [redoStack, setRedoStack] = useState<VisualizerElement[][]>([]);
+  const {
+    elements,
+    setElements,
+    pushHistory,
+    undo,
+    redo,
+    historyLength,
+    redoStackLength
+  } = useHistoryManager();
+  const {
+    isPlaying,
+    setIsPlaying,
+    sourceType,
+    setSourceType,
+    volume,
+    setVolume,
+    trackTitle,
+    analyserRef,
+    handleTabShare,
+    handleFileUpload
+  } = useAudioEngine();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [clipboard, setClipboard] = useState<VisualizerElement | null>(null);
   const [projectName, setProjectName] = useState('Untitled Project');
@@ -38,12 +59,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
   
   // Selection Box State
   const [selectionBox, setSelectionBox] = useState<SelectionBox>({ startX: 0, startY: 0, currentX: 0, currentY: 0, visible: false });
-
-  // Audio State
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [sourceType, setSourceType] = useState<AudioSourceType>(AudioSourceType.OSCILLATOR);
-  const [volume, setVolume] = useState(0.7);
-  const [trackTitle, setTrackTitle] = useState('Demo Tone');
 
   // Interaction Refs
   const dragMode = useRef<DragMode>(null);
@@ -57,65 +72,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const elementRefs = useRef<Map<string, SVGElement>>(new Map());
 
-  // Audio Refs
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const sourceNodeRef = useRef<AudioNode | null>(null);
-  const gainNodeRef = useRef<GainNode | null>(null);
   const animationFrameRef = useRef<number>(0);
-  const audioElementRef = useRef<HTMLAudioElement | null>(null);
-  const tabStreamRef = useRef<MediaStream | null>(null);
-  const mediaElementSourceCache = useRef<WeakMap<HTMLAudioElement, MediaElementAudioSourceNode>>(new WeakMap());
-
-  // --- History Management ---
-  const pushHistory = (newElements: VisualizerElement[]) => {
-    setHistory(prev => [...prev, elements]);
-    setRedoStack([]);
-    setElements(newElements);
-  };
-
-  const undo = () => {
-    if (history.length === 0) return;
-    const previous = history[history.length - 1];
-    setRedoStack(prev => [elements, ...prev]);
-    setElements(previous);
-    setHistory(prev => prev.slice(0, prev.length - 1));
-  };
-
-  const redo = () => {
-    if (redoStack.length === 0) return;
-    const next = redoStack[0];
-    setHistory(prev => [...prev, elements]);
-    setElements(next);
-    setRedoStack(prev => prev.slice(1));
-  };
-
-  // Helper Functions
-  const findElementById = (id: string, list: VisualizerElement[]): VisualizerElement | undefined => {
-    for (const el of list) {
-      if (el.id === id) return el;
-      if (el.children) {
-        const found = findElementById(id, el.children);
-        if (found) return found;
-      }
-    }
-    return undefined;
-  };
-
-  const updateElementInList = (list: VisualizerElement[], id: string, updates: Partial<VisualizerElement>): VisualizerElement[] => {
-    return list.map(el => {
-      if (el.id === id) return { ...el, ...updates };
-      if (el.children) return { ...el, children: updateElementInList(el.children, id, updates) };
-      return el;
-    });
-  };
-
-  const removeElementFromList = (list: VisualizerElement[], id: string): VisualizerElement[] => {
-    return list.filter(el => el.id !== id).map(el => {
-      if (el.children) return { ...el, children: removeElementFromList(el.children, id) };
-      return el;
-    });
-  };
 
   const normalizeSpline = (id: string, list: VisualizerElement[]) => {
     const el = findElementById(id, list);
@@ -152,15 +109,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
   };
 
   const finishSpline = () => {
-      if (activeSplineId.current) {
-          const id = activeSplineId.current;
-          setElements(prev => {
-              const normalized = normalizeSpline(id, prev);
-              pushHistory(normalized);
-              return normalized;
-          });
-          activeSplineId.current = null;
-      }
+    if (!activeSplineId.current) return;
+    const normalized = normalizeSpline(activeSplineId.current, elements);
+    pushHistory(normalized);
+    activeSplineId.current = null;
   };
 
   const handleSaveProject = () => {
@@ -195,165 +147,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
     e.target.value = '';
   };
 
-  // --- Audio Engine ---
-  const initAudio = useCallback(async () => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
-    const ctx = audioContextRef.current;
-    if (!analyserRef.current) {
-      analyserRef.current = ctx.createAnalyser();
-      analyserRef.current.fftSize = 2048;
-      analyserRef.current.smoothingTimeConstant = 0.85;
-    }
-    if (!gainNodeRef.current) {
-      gainNodeRef.current = ctx.createGain();
-      gainNodeRef.current.connect(ctx.destination);
-    }
-    gainNodeRef.current.gain.value = volume;
-
-    if (sourceNodeRef.current) {
-      sourceNodeRef.current.disconnect();
-      if (sourceType === AudioSourceType.OSCILLATOR) {
-        try { (sourceNodeRef.current as OscillatorNode).stop(); } catch(e) {}
-      }
-    }
-
-    try {
-      if (sourceType === AudioSourceType.MICROPHONE) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const micSource = ctx.createMediaStreamSource(stream);
-        micSource.connect(analyserRef.current);
-        sourceNodeRef.current = micSource;
-        setTrackTitle("Microphone Input");
-      } else if (sourceType === AudioSourceType.TAB && tabStreamRef.current) {
-        const tabSource = ctx.createMediaStreamSource(tabStreamRef.current);
-        tabSource.connect(analyserRef.current);
-        sourceNodeRef.current = tabSource;
-        const track = tabStreamRef.current.getAudioTracks()[0];
-        setTrackTitle(track?.label || "Tab Audio");
-      } else if (sourceType === AudioSourceType.FILE && audioElementRef.current) {
-        const el = audioElementRef.current;
-        let fileSource: MediaElementAudioSourceNode;
-        if (mediaElementSourceCache.current.has(el)) fileSource = mediaElementSourceCache.current.get(el)!;
-        else {
-           fileSource = ctx.createMediaElementSource(el);
-           mediaElementSourceCache.current.set(el, fileSource);
-        }
-        fileSource.connect(analyserRef.current);
-        analyserRef.current.connect(gainNodeRef.current);
-        sourceNodeRef.current = fileSource;
-        if (isPlaying) el.play().catch(console.error);
-      } else {
-        const osc = ctx.createOscillator();
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(110, ctx.currentTime);
-        const lfo = ctx.createOscillator();
-        lfo.frequency.value = 4;
-        const lfoGain = ctx.createGain();
-        lfoGain.gain.value = 50;
-        lfo.connect(lfoGain);
-        lfoGain.connect(osc.frequency);
-        lfo.start();
-        const oscGain = ctx.createGain();
-        oscGain.gain.value = 0.15; 
-        osc.connect(oscGain);
-        oscGain.connect(analyserRef.current);
-        analyserRef.current.connect(gainNodeRef.current);
-        osc.start();
-        sourceNodeRef.current = osc;
-        setTrackTitle("Demo Oscillator");
-      }
-    } catch (err) { console.error("Audio Init Error", err); }
-  }, [sourceType, isPlaying, volume]);
-
-  useEffect(() => {
-    if (isPlaying) {
-       if (audioContextRef.current?.state === 'suspended') audioContextRef.current.resume();
-       initAudio();
-    } else {
-        if (sourceType === AudioSourceType.FILE && audioElementRef.current) audioElementRef.current.pause();
-        if (sourceType === AudioSourceType.OSCILLATOR && sourceNodeRef.current) try { (sourceNodeRef.current as OscillatorNode).stop(); } catch(e) {}
-    }
-    return () => { if (sourceNodeRef.current) try { sourceNodeRef.current.disconnect(); } catch(e) {} };
-  }, [isPlaying, sourceType, initAudio]);
-
-  useEffect(() => {
-    if (gainNodeRef.current) gainNodeRef.current.gain.setTargetAtTime(volume, audioContextRef.current?.currentTime || 0, 0.1);
-  }, [volume]);
-
-  const handleTabShare = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: { channelCount: 2 } as any });
-      if (stream.getAudioTracks().length === 0) {
-        alert("No audio track found.");
-        stream.getTracks().forEach(t => t.stop());
-        return;
-      }
-      tabStreamRef.current = stream;
-      setSourceType(AudioSourceType.TAB);
-      setIsPlaying(true);
-    } catch (err) { console.error(err); }
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const url = URL.createObjectURL(file);
-      const audio = new Audio(url);
-      audio.loop = true;
-      audio.addEventListener('loadedmetadata', () => setTrackTitle(file.name.replace(/\.[^/.]+$/, "")));
-      audioElementRef.current = audio;
-      setSourceType(AudioSourceType.FILE);
-      setIsPlaying(true);
-    }
-  };
-
-  const interpolate = (keyframes: AnimationKeyframe[], input: number): number | string => {
-    const sorted = [...keyframes].sort((a, b) => a.offset - b.offset);
-    if (sorted.length === 0) return 0;
-    
-    // For string values (Color or Layer)
-    const firstVal = sorted[0].value;
-    if (typeof firstVal === 'string') {
-       if (input <= sorted[0].offset) return firstVal;
-       if (input >= sorted[sorted.length - 1].offset) return sorted[sorted.length - 1].value;
-
-       // Color Interpolation
-       if (firstVal.startsWith('#')) {
-            for (let i = 0; i < sorted.length - 1; i++) {
-                if (input >= sorted[i].offset && input <= sorted[i+1].offset) {
-                    const range = sorted[i+1].offset - sorted[i].offset;
-                    const t = (input - sorted[i].offset) / (range === 0 ? 1 : range); // Normalize 0-1 between keys
-                    return interpolateColor(String(sorted[i].value), String(sorted[i+1].value), t);
-                }
-            }
-       }
-       
-       // Step Interpolation (Layers)
-       for (let i = 0; i < sorted.length - 1; i++) {
-           if (input >= sorted[i].offset && input < sorted[i+1].offset) {
-               return sorted[i].value;
-           }
-       }
-       return sorted[sorted.length - 1].value;
-    }
-
-    // For numeric animations, linear interpolation
-    if (sorted.length === 1) return sorted[0].value;
-    if (input <= sorted[0].offset) return sorted[0].value;
-    if (input >= sorted[sorted.length - 1].offset) return sorted[sorted.length - 1].value;
-
-    for (let i = 0; i < sorted.length - 1; i++) {
-      if (input >= sorted[i].offset && input <= sorted[i+1].offset) {
-         const t = (input - sorted[i].offset) / (sorted[i+1].offset - sorted[i].offset);
-         const v1 = sorted[i].value as number;
-         const v2 = sorted[i+1].value as number;
-         return v1 + t * (v2 - v1);
-      }
-    }
-    return 0;
-  };
 
   useEffect(() => {
     const loop = () => {
@@ -394,7 +187,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
                  driverValue = (sum / (safeEnd - startBin)) / 255;
              }
              
-             const output = interpolate(track.keyframes, driverValue);
+             const output = interpolateKeyframes(track.keyframes, driverValue);
              
              if (track.target === 'layer') {
                  layerCommand = String(output);
@@ -779,7 +572,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIds, clipboard, elements, history, redoStack, toolMode]);
+  }, [selectedIds, clipboard, elements, historyLength, redoStackLength, toolMode]);
 
   const handleContextMenu = (e: React.MouseEvent, id?: string) => {
     e.preventDefault();
@@ -1059,7 +852,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
         
         <WorkspaceHeader 
             onClose={onClose} 
-            undo={undo} redo={redo} historyLength={history.length} redoStackLength={redoStack.length}
+            undo={undo} redo={redo} historyLength={historyLength} redoStackLength={redoStackLength}
             projectName={projectName} setProjectName={setProjectName} onSave={handleSaveProject} onImport={handleImportProject}
             toolMode={toolMode} setToolMode={setToolMode}
             onGroup={handleGroup} onUngroup={handleUngroup} onUnion={handleMerge} onSubtract={handleSubtract}

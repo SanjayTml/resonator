@@ -1,9 +1,9 @@
 
-
 import React from 'react';
 import { Activity, X, Group, ArrowRight } from 'lucide-react';
 import { VisualizerElement, AnimationTrack, AnimationDriver, AnimationTarget } from '../../types';
 import { hexToHSL, hslToHex, getPreviewColor } from './utils';
+import { findElementById } from './elementTree';
 
 interface WorkspacePropertiesProps {
   selectedIds: Set<string>;
@@ -13,17 +13,6 @@ interface WorkspacePropertiesProps {
 }
 
 const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({ selectedIds, elements, onUpdate, onGroup }) => {
-  const findElementById = (id: string, list: VisualizerElement[]): VisualizerElement | undefined => {
-    for (const el of list) {
-      if (el.id === id) return el;
-      if (el.children) {
-        const found = findElementById(id, el.children);
-        if (found) return found;
-      }
-    }
-    return undefined;
-  };
-
   const getAllElements = (list: VisualizerElement[]): {id: string, name: string}[] => {
       let result: {id: string, name: string}[] = [];
       list.forEach(el => {
