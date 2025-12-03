@@ -56,6 +56,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
   const [projectName, setProjectName] = useState('Untitled Project');
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0 });
   const [toolMode, setToolMode] = useState<'pointer' | 'shape' | 'freeform' | 'spline'>('pointer');
+  const [canvasScale, setCanvasScale] = useState(1);
+  const [canvasOffset, setCanvasOffset] = useState({ x: 0, y: 0 });
+  const [isSpacePressed, setIsSpacePressed] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
   
   // Selection Box State
   const [selectionBox, setSelectionBox] = useState<SelectionBox>({ startX: 0, startY: 0, currentX: 0, currentY: 0, visible: false });
@@ -71,6 +75,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
   const startEls = useRef<Map<string, VisualizerElement>>(new Map());
   const svgRef = useRef<SVGSVGElement>(null);
   const elementRefs = useRef<Map<string, SVGElement>>(new Map());
+  const panStartRef = useRef<{ x: number; y: number } | null>(null);
+  const panOffsetRef = useRef({ x: 0, y: 0 });
 
   const animationFrameRef = useRef<number>(0);
 
@@ -547,6 +553,11 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
     const handleKeyDown = (e: KeyboardEvent) => {
         const target = e.target as HTMLElement;
         if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return;
+        if (e.code === 'Space') {
+            e.preventDefault();
+            setIsSpacePressed(true);
+            return;
+        }
         if (e.key === 'Delete' || e.key === 'Backspace') deleteSelected();
         if (e.key === 'Escape') {
             if (toolMode === 'spline') { finishSpline(); setToolMode('pointer'); }
@@ -574,6 +585,22 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedIds, clipboard, elements, historyLength, redoStackLength, toolMode]);
 
+  useEffect(() => {
+    const handleKeyUp = (e: KeyboardEvent) => {
+        if (e.code === 'Space') setIsSpacePressed(false);
+    };
+    window.addEventListener('keyup', handleKeyUp);
+    return () => window.removeEventListener('keyup', handleKeyUp);
+  }, []);
+
+  useEffect(() => {
+    if (!isSpacePressed && dragMode.current === 'pan') {
+        dragMode.current = null;
+        panStartRef.current = null;
+        setIsPanning(false);
+    }
+  }, [isSpacePressed]);
+
   const handleContextMenu = (e: React.MouseEvent, id?: string) => {
     e.preventDefault();
     e.stopPropagation();
@@ -584,6 +611,15 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
   const handleSVGMouseDown = (e: React.MouseEvent, mode: DragMode, id?: string) => {
     if (e.button === 0) {
         e.stopPropagation();
+        setContextMenu(prev => ({ ...prev, visible: false }));
+
+        if (isSpacePressed) {
+            dragMode.current = 'pan';
+            panStartRef.current = { x: e.clientX, y: e.clientY };
+            panOffsetRef.current = { ...canvasOffset };
+            setIsPanning(true);
+            return;
+        }
         
         if (mode === 'edit-point' || mode === 'edit-handle-in' || mode === 'edit-handle-out') {
              dragMode.current = mode;
@@ -680,11 +716,16 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
         }
         dragMode.current = mode;
         startPos.current = { x: e.clientX, y: e.clientY };
-        setContextMenu(prev => ({ ...prev, visible: false }));
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    if (dragMode.current === 'pan' && panStartRef.current) {
+        const dx = e.clientX - panStartRef.current.x;
+        const dy = e.clientY - panStartRef.current.y;
+        setCanvasOffset({ x: panOffsetRef.current.x + dx, y: panOffsetRef.current.y + dy });
+        return;
+    }
     // Marquee Drag
     if (dragMode.current === 'marquee' && svgRef.current) {
         const rect = svgRef.current.getBoundingClientRect();
@@ -765,6 +806,12 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
   };
 
   const handleMouseUp = () => { 
+      if (dragMode.current === 'pan') {
+          dragMode.current = null;
+          panStartRef.current = null;
+          setIsPanning(false);
+          return;
+      }
       if (dragMode.current === 'marquee') {
           if (svgRef.current) {
               const rect = svgRef.current.getBoundingClientRect();
@@ -833,8 +880,35 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
       }
   };
 
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+      if (!isSpacePressed || !svgRef.current) return;
+      e.preventDefault();
+      const rect = svgRef.current.getBoundingClientRect();
+      const pointerX = e.clientX - rect.left;
+      const pointerY = e.clientY - rect.top;
+      const delta = -e.deltaY * 0.001;
+      setCanvasScale(prevScale => {
+          const raw = prevScale * (1 + delta);
+          const nextScale = Math.min(4, Math.max(0.25, raw));
+          if (nextScale === prevScale) return prevScale;
+          setCanvasOffset(prevOffset => {
+              const scaleRatio = nextScale / prevScale;
+              return {
+                  x: prevOffset.x + pointerX * (1 - scaleRatio),
+                  y: prevOffset.y + pointerY * (1 - scaleRatio)
+              };
+          });
+          return nextScale;
+      });
+  };
+
+  const resetCanvasView = () => {
+      setCanvasScale(1);
+      setCanvasOffset({ x: 0, y: 0 });
+  };
+
   return (
-    <div className="flex flex-col h-full w-full bg-zinc-100 dark:bg-zinc-950 transition-colors relative overflow-hidden text-zinc-900 dark:text-zinc-100 p-4" onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}>
+    <div className="flex flex-col h-full w-full bg-zinc-100 dark:bg-zinc-950 transition-colors relative overflow-hidden text-zinc-900 dark:text-zinc-100 p-4" onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onWheel={handleWheel}>
       
       {contextMenu.visible && (
         <ContextMenu 
@@ -859,6 +933,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
             addElement={addElement} onSVGUpload={handleSVGUpload}
             selectedSplineId={selectedIds.size === 1 && findElementById(Array.from(selectedIds)[0] as string, elements)?.type === 'spline' ? Array.from(selectedIds)[0] as string : undefined}
             resumeSplineEditing={resumeSplineEditing} removeLastSplinePoint={removeLastSplinePoint}
+            isPanMode={isSpacePressed}
+            onResetView={resetCanvasView}
         />
 
         <div className="flex-1 flex overflow-hidden">
@@ -876,6 +952,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
                         onMouseDown={handleSVGMouseDown} onContextMenu={handleContextMenu}
                         onSplinePointMouseDown={handleSplinePointMouseDown}
                         selectionBox={selectionBox}
+                        canvasScale={canvasScale}
+                        canvasOffset={canvasOffset}
+                        isPanning={isPanning}
+                        isSpacePressed={isSpacePressed}
                     />
                 </div>
                 

@@ -12,12 +12,22 @@ interface WorkspaceCanvasProps {
   // Spline handlers
   onSplinePointMouseDown: (e: React.MouseEvent, elId: string, idx: number, type: 'anchor' | 'in' | 'out') => void;
   selectionBox?: SelectionBox;
+  canvasScale: number;
+  canvasOffset: { x: number; y: number };
+  isPanning: boolean;
+  isSpacePressed: boolean;
 }
 
 const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({ 
   svgRef, elementRefs, elements, selectedIds, 
-  onMouseDown, onContextMenu, onSplinePointMouseDown, selectionBox
+  onMouseDown, onContextMenu, onSplinePointMouseDown, selectionBox,
+  canvasScale, canvasOffset, isPanning, isSpacePressed
 }) => {
+  const transformStyle: React.CSSProperties = {
+    transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px) scale(${canvasScale})`,
+    transformOrigin: '0 0'
+  };
+  const panCursor = isPanning ? 'grabbing' : isSpacePressed ? 'grab' : undefined;
 
   const renderSplineControls = (el: VisualizerElement) => {
      if (el.type !== 'spline' || !el.points || !selectedIds.has(el.id)) return null;
@@ -126,21 +136,23 @@ const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
 
   return (
     <div className="w-full h-full bg-zinc-50/50 dark:bg-zinc-950/50 flex flex-col overflow-hidden">
-        <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05] pointer-events-none" style={{ backgroundImage: `linear-gradient(45deg, currentColor 25%, transparent 25%), linear-gradient(-45deg, currentColor 25%, transparent 25%), linear-gradient(45deg, transparent 75%, currentColor 75%), linear-gradient(-45deg, transparent 75%, currentColor 75%)`, backgroundSize: '20px 20px' }}></div>
-        <div className="relative w-full h-full bg-white dark:bg-zinc-900 shadow-2xl overflow-hidden" onMouseDown={(e) => onMouseDown(e, null)} onContextMenu={(e) => onContextMenu(e)}>
-            <svg ref={svgRef} className="w-full h-full block select-none">
-                {elements.map(renderShape)}
-                
-                {selectionBox && selectionBox.visible && (
-                    <rect 
-                        x={Math.min(selectionBox.startX, selectionBox.currentX)} 
-                        y={Math.min(selectionBox.startY, selectionBox.currentY)} 
-                        width={Math.abs(selectionBox.currentX - selectionBox.startX)} 
-                        height={Math.abs(selectionBox.currentY - selectionBox.startY)} 
-                        fill="rgba(59, 130, 246, 0.1)" stroke="#3b82f6" strokeWidth="1" strokeDasharray="4 2" pointerEvents="none"
-                    />
-                )}
-            </svg>
+        <div className="relative w-full h-full bg-white dark:bg-zinc-900 shadow-2xl overflow-hidden" onMouseDown={(e) => onMouseDown(e, null)} onContextMenu={(e) => onContextMenu(e)} style={{ cursor: panCursor }}>
+            <div className="relative w-full h-full" style={transformStyle}>
+                <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05] pointer-events-none" style={{ backgroundImage: `linear-gradient(45deg, currentColor 25%, transparent 25%), linear-gradient(-45deg, currentColor 25%, transparent 25%), linear-gradient(45deg, transparent 75%, currentColor 75%), linear-gradient(-45deg, transparent 75%, currentColor 75%)`, backgroundSize: '20px 20px' }}></div>
+                <svg ref={svgRef} className="w-full h-full block select-none">
+                    {elements.map(renderShape)}
+                    
+                    {selectionBox && selectionBox.visible && (
+                        <rect 
+                            x={Math.min(selectionBox.startX, selectionBox.currentX)} 
+                            y={Math.min(selectionBox.startY, selectionBox.currentY)} 
+                            width={Math.abs(selectionBox.currentX - selectionBox.startX)} 
+                            height={Math.abs(selectionBox.currentY - selectionBox.startY)} 
+                            fill="rgba(59, 130, 246, 0.1)" stroke="#3b82f6" strokeWidth="1" strokeDasharray="4 2" pointerEvents="none"
+                        />
+                    )}
+                </svg>
+            </div>
         </div>
     </div>
   );

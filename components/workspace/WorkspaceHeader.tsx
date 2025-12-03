@@ -3,7 +3,7 @@ import {
   X, Undo2, Redo2, Group, Ungroup, Combine, Scissors, 
   MousePointer2, Pencil, PenTool, Plus, ChevronDown, 
   Circle, Square, Triangle, Minus, Image as ImageIcon,
-  FolderOpen, Download, PlusCircle, Delete
+  FolderOpen, Download, PlusCircle, Delete, Hand, Maximize2
 } from 'lucide-react';
 import { ElementType, VisualizerElement } from '../../types';
 
@@ -28,6 +28,8 @@ interface WorkspaceHeaderProps {
   selectedSplineId?: string;
   resumeSplineEditing: () => void;
   removeLastSplinePoint: () => void;
+  isPanMode: boolean;
+  onResetView: () => void;
 }
 
 const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
@@ -36,7 +38,8 @@ const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
   toolMode, setToolMode,
   onGroup, onUngroup, onUnion, onSubtract,
   addElement, onSVGUpload,
-  selectedSplineId, resumeSplineEditing, removeLastSplinePoint
+  selectedSplineId, resumeSplineEditing, removeLastSplinePoint,
+  isPanMode, onResetView
 }) => {
   const fileProjectImportRef = useRef<HTMLInputElement>(null);
   const svgUploadRef = useRef<HTMLInputElement>(null);
@@ -72,7 +75,9 @@ const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
             )}
             
             <div className="flex items-center bg-zinc-100 dark:bg-zinc-800/50 rounded-xl p-1 border border-zinc-200 dark:border-zinc-700/50 ml-2">
-            <button onClick={() => setToolMode('pointer')} className={`p-2 rounded-lg transition-all ${toolMode === 'pointer' ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100' : 'text-zinc-400'}`} title="Pointer"><MousePointer2 size={16} /></button>
+            <button onClick={() => setToolMode('pointer')} className={`p-2 rounded-lg transition-all ${toolMode === 'pointer' ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100' : 'text-zinc-400'}`} title={isPanMode ? 'Pan (Space)' : 'Pointer'}>
+              {isPanMode ? <Hand size={16} /> : <MousePointer2 size={16} />}
+            </button>
             {/* REMOVED MARQUEE BUTTON - Combined into Pointer */}
             <button onClick={() => setToolMode('freeform')} className={`p-2 rounded-lg transition-all ${toolMode === 'freeform' ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100' : 'text-zinc-400'}`} title="Freeform Line"><Pencil size={16} /></button>
             <button onClick={() => setToolMode('spline')} className={`p-2 rounded-lg transition-all ${toolMode === 'spline' ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100' : 'text-zinc-400'}`} title="Spline Curve"><PenTool size={16} /></button>
@@ -88,6 +93,9 @@ const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
                     <input ref={svgUploadRef} type="file" accept=".svg" className="hidden" onChange={onSVGUpload} />
                 </div>
             </div>
+            <button onClick={onResetView} className="p-2 rounded-lg text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100" title="Reset View">
+              <Maximize2 size={16} />
+            </button>
             </div>
         </div>
 
