@@ -1,0 +1,8 @@
+{
+  "name": "Resonate",
+  "description": "High-fidelity, minimalist audio visualization in the browser.",
+  "requestFramePermissions": [
+    "microphone",
+    "display-capture"
+  ]
+}
