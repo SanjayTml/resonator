@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AudioSourceType } from '../../../types';
 
 interface UseAudioEngineResult {
@@ -40,7 +40,7 @@ const useAudioEngine = (): UseAudioEngineResult => {
     if (!analyserRef.current) {
       analyserRef.current = ctx.createAnalyser();
       analyserRef.current.fftSize = 2048;
-      analyserRef.current.smoothingTimeConstant = 0.85;
+      analyserRef.current.smoothingTimeConstant = 0.2;
     }
 
     if (!gainNodeRef.current) {

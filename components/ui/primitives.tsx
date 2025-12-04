@@ -8,6 +8,7 @@ const inputSizes = {
 };
 
 const buttonSizes = {
+  xs: "h-6 px-2 text-[10px]",
   sm: "h-8 px-3 text-[12px]",
   md: "h-9 px-4 text-sm",
   lg: "h-11 px-6 text-base",

@@ -330,6 +330,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
   const [showGrid, setShowGrid] = useState(true);
   const [gridVariant, setGridVariant] = useState<GridVariant>("straight");
   const [snapGuides, setSnapGuides] = useState<SnapGuideState | null>(null);
+  const [graphEnabled, setGraphEnabled] = useState(true);
 
   // Selection Box State
   const [selectionBox, setSelectionBox] = useState<SelectionBox>({
@@ -1917,6 +1918,17 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
             toolMode={toolMode}
             onReorderLayer={handleLayerReorder}
             innerSelectionId={innerEditSelectionId}
+            isPlaying={isPlaying}
+            setIsPlaying={setIsPlaying}
+            trackTitle={trackTitle}
+            sourceType={sourceType}
+            setSourceType={setSourceType}
+            volume={volume}
+            setVolume={setVolume}
+            onFileUpload={handleFileUpload}
+            onTabShare={handleTabShare}
+            graphEnabled={graphEnabled}
+            setGraphEnabled={setGraphEnabled}
           />
 
           {/* Center Area: Canvas + Footer */}
@@ -1947,15 +1959,9 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
             {/* Footer Container - Static below canvas */}
             <div className="shrink-0 p-4 flex justify-center z-20 bg-zinc-50 dark:bg-zinc-950 border-t border-zinc-200 dark:border-zinc-800">
               <WorkspaceFooter
+                analyserRef={analyserRef}
                 isPlaying={isPlaying}
-                setIsPlaying={setIsPlaying}
-                trackTitle={trackTitle}
-                sourceType={sourceType}
-                setSourceType={setSourceType}
-                volume={volume}
-                setVolume={setVolume}
-                onFileUpload={handleFileUpload}
-                onTabShare={handleTabShare}
+                graphEnabled={graphEnabled}
               />
             </div>
           </div>
