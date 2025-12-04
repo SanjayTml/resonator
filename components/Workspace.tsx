@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { VisualizerElement, ElementType, DragMode, SelectionBox, Alignment } from '../types';
-import { hexToHSL, generateMergedElement, generateSubtractedElement, isFillActive, isStrokeActive } from './workspace/utils';
+import { generateMergedElement, generateSubtractedElement, isFillActive, isStrokeActive } from './workspace/utils';
 import WorkspaceHeader from './workspace/WorkspaceHeader';
 import WorkspaceLayers from './workspace/WorkspaceLayers';
 import WorkspaceFooter from './workspace/WorkspaceFooter';
@@ -199,10 +199,15 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
          if (!innerNode) return;
 
          const wrapper = innerNode.parentNode as HTMLElement;
+         const shapeNode = el.type !== 'group'
+            ? (innerNode.querySelector('[data-shape-root]') as SVGElement | null)
+            : null;
+         const isCustomShape = shapeNode?.hasAttribute('data-custom-shape');
+         const baseCustomColor = shapeNode?.getAttribute('data-base-color') || '';
+         const styleTarget = shapeNode || innerNode;
 
-         const baseHSL = hexToHSL(el.color);
          let scale = 1, opacity = el.opacity, rot = el.rotation, xOff = 0, yOff = 0;
-         let widthMult = 1, heightMult = 1, hueMod = 0, satMod = 0, lightMod = 0;
+         let widthMult = 1, heightMult = 1;
          let layerCommand: string | null = null;
          let colorOverride: string | null = null;
 
@@ -235,9 +240,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
                     case 'y': yOff += output; break;
                     case 'width': widthMult *= output; break;
                     case 'height': heightMult *= output; break;
-                    case 'hue': hueMod += output; break;
-                    case 'saturation': satMod += output; break;
-                    case 'lightness': lightMod += output; break;
                 }
              }
          });
@@ -252,33 +254,34 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
          
          innerNode.style.opacity = `${Math.min(1, Math.max(0, opacity))}`;
          
-         let colorString = '';
-         if (colorOverride) {
-             colorString = colorOverride;
-         } else {
-             const finalH = (baseHSL.h + hueMod) % 360;
-             const finalS = Math.min(100, Math.max(0, baseHSL.s + satMod));
-             const finalL = Math.min(100, Math.max(0, baseHSL.l + lightMod));
-             colorString = `hsl(${finalH}, ${finalS}%, ${finalL}%)`;
-         }
+         const fillColor = colorOverride || el.color;
          
          // Apply Color (If Gradient, we don't apply fill color unless overridden by animation, usually gradients are static in appearance)
          // But if animating 'color' target, we override the fill.
-         const strokeActive = isStrokeActive(el);
-         const strokeColorString = el.strokeColor ? el.strokeColor : colorString;
-         if (strokeActive) innerNode.style.stroke = strokeColorString;
-         else innerNode.style.stroke = 'none';
+         if (el.type !== 'group') {
+             const strokeActive = isStrokeActive(el);
+             const strokeColorString = colorOverride ?? el.strokeColor ?? fillColor;
+             if (strokeActive) {
+                 if (colorOverride) styleTarget.style.stroke = strokeColorString;
+                 else styleTarget.style.removeProperty('stroke');
+             } else {
+                 styleTarget.style.stroke = 'none';
+             }
 
-         if (el.type === 'custom') {
-             innerNode.style.color = colorString;
-         } else if (el.type !== 'group') {
              const fillActive = isFillActive(el);
              if (fillActive) {
-                 if (el.fillType !== 'gradient' || colorOverride) innerNode.style.fill = colorString;
-                 else innerNode.style.fill = '';
-                 innerNode.style.color = colorString;
+                 if (colorOverride) {
+                     styleTarget.style.fill = fillColor;
+                     if (isCustomShape && shapeNode) shapeNode.style.color = fillColor;
+                 } else {
+                     styleTarget.style.removeProperty('fill');
+                     if (isCustomShape && shapeNode) {
+                         if (baseCustomColor) shapeNode.style.color = baseCustomColor;
+                         else shapeNode.style.removeProperty('color');
+                     }
+                 }
              } else {
-                 innerNode.style.fill = 'none';
+                 styleTarget.style.fill = 'none';
              }
          }
 

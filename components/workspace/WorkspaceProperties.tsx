@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Activity, X, Group, ArrowRight } from 'lucide-react';
 import { VisualizerElement, AnimationTrack, AnimationDriver, AnimationTarget } from '../../types';
-import { hexToHSL, hslToHex, getDefaultFillEnabled, getDefaultStrokeEnabled } from './utils';
+import { getDefaultFillEnabled, getDefaultStrokeEnabled } from './utils';
 import { findElementById } from './elementTree';
 import { 
   Button, 
@@ -323,7 +323,7 @@ const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({ selectedIds, 
                                             const newTarget = e.target.value as AnimationTarget;
                                             let defVal: string | number = 1.5;
                                             if(newTarget === 'x' || newTarget === 'y') defVal = 0.2;
-                                            if(newTarget === 'rotation' || newTarget === 'hue') defVal = 180;
+                                            if(newTarget === 'rotation') defVal = 180;
                                             if(newTarget === 'layer') defVal = 'front';
                                             if(newTarget === 'color') defVal = el.color;
                                             
@@ -341,8 +341,6 @@ const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({ selectedIds, 
                                         <option value="rotation">Rotation</option>
                                         <option value="x">Pos X</option>
                                         <option value="y">Pos Y</option>
-                                        <option value="hue">Color Hue</option>
-                                        <option value="saturation">Color Sat</option>
                                         <option value="color">Color</option>
                                         <option value="layer">Layer (Z-Index)</option>
                                     </SelectInput>
@@ -505,22 +503,7 @@ const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({ selectedIds, 
                                     return (
                                         <div key={kf.id} className="flex items-center justify-between gap-2">
                                             <div className="flex-1 min-w-0 flex justify-start">
-                                                {track.target === 'hue' ? (
-                                                    <ColorInput
-                                                        value={hslToHex(hexToHSL(el.color).h + Number(kf.value), 100, 50)}
-                                                        shape="square"
-                                                        className="w-full"
-                                                        swatchSize="sm"
-                                                        inputProps={{ size: 'xs', className: 'w-20 text-left font-mono uppercase' }}
-                                                        onChange={(hex) => {
-                                                            const targetH = hexToHSL(hex).h;
-                                                            const baseH = hexToHSL(el.color).h;
-                                                            let diff = targetH - baseH;
-                                                            if(diff < 0) diff += 360;
-                                                            handleValueChange(diff);
-                                                        }}
-                                                    />
-                                                ) : track.target === 'color' ? (
+                                                {track.target === 'color' ? (
                                                     <ColorInput
                                                         value={String(kf.value)}
                                                         className="w-full"

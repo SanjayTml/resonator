@@ -40,7 +40,16 @@ export type FrequencyRange = 'bass' | 'mid' | 'high';
 export type Alignment = 'top' | 'middle' | 'bottom' | 'left' | 'center' | 'right';
 
 export type AnimationDriver = 'time' | 'audio';
-export type AnimationTarget = 'scale' | 'opacity' | 'x' | 'y' | 'rotation' | 'width' | 'height' | 'hue' | 'saturation' | 'lightness' | 'layer' | 'color';
+export type AnimationTarget =
+  | 'scale'
+  | 'opacity'
+  | 'x'
+  | 'y'
+  | 'rotation'
+  | 'width'
+  | 'height'
+  | 'layer'
+  | 'color';
 
 export interface AnimationKeyframe {
   id: string;

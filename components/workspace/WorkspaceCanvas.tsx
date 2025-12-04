@@ -86,19 +86,19 @@ const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
       if (el.type === 'group') {
          shape = <g>{el.children?.map(renderShape)}</g>;
       } 
-      else if (el.type === 'circle') shape = <circle cx="0" cy="0" r={el.width / 2} {...fillProp} {...strokeProp} {...commonProps} />;
-      else if (el.type === 'rect' || el.type === 'bar') shape = <rect x={-el.width/2} y={-el.height/2} width={el.width} height={el.height} {...fillProp} {...strokeProp} {...commonProps} />;
-      else if (el.type === 'line') shape = <line x1={-el.width/2} y1="0" x2={el.width/2} y2="0" {...strokeProp} {...commonProps} />;
-      else if (el.type === 'triangle') shape = <polygon points={`0,${-el.height/2} ${el.width/2},${el.height/2} ${-el.width/2},${el.height/2}`} {...fillProp} {...strokeProp} {...commonProps} />;
+      else if (el.type === 'circle') shape = <circle data-shape-root cx="0" cy="0" r={el.width / 2} {...fillProp} {...strokeProp} {...commonProps} />;
+      else if (el.type === 'rect' || el.type === 'bar') shape = <rect data-shape-root x={-el.width/2} y={-el.height/2} width={el.width} height={el.height} {...fillProp} {...strokeProp} {...commonProps} />;
+      else if (el.type === 'line') shape = <line data-shape-root x1={-el.width/2} y1="0" x2={el.width/2} y2="0" {...strokeProp} {...commonProps} />;
+      else if (el.type === 'triangle') shape = <polygon data-shape-root points={`0,${-el.height/2} ${el.width/2},${el.height/2} ${-el.width/2},${el.height/2}`} {...fillProp} {...strokeProp} {...commonProps} />;
       else if (el.type === 'freeform' && el.points) {
           const d = el.points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
-          shape = <path d={d} {...fillProp} {...strokeProp} {...commonProps} strokeLinecap="round" strokeLinejoin="round" />;
+          shape = <path data-shape-root d={d} {...fillProp} {...strokeProp} {...commonProps} strokeLinecap="round" strokeLinejoin="round" />;
       }
       else if (el.type === 'spline' && el.points) {
           const d = getSplinePath(el.points, !!el.isClosed);
           shape = (
              <g>
-                 <path d={d} {...fillProp} {...strokeProp} {...commonProps} strokeLinecap="round" strokeLinejoin="round" />
+                 <path data-shape-root d={d} {...fillProp} {...strokeProp} {...commonProps} strokeLinecap="round" strokeLinejoin="round" />
                  {renderSplineControls(el)}
              </g>
           );
@@ -106,7 +106,15 @@ const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
       else if (el.type === 'custom' && el.svgContent) {
           shape = (
               <svg viewBox={el.viewBox} x={-el.width/2} y={-el.height/2} width={el.width} height={el.height} overflow="visible" {...commonProps}>
-                 <g dangerouslySetInnerHTML={{ __html: el.svgContent || '' }} fill="currentColor" stroke="currentColor" style={{ color: el.color }} />
+                 <g
+                    data-shape-root
+                    data-custom-shape="true"
+                    data-base-color={el.color}
+                    dangerouslySetInnerHTML={{ __html: el.svgContent || '' }}
+                    fill="currentColor"
+                    stroke="currentColor"
+                    style={{ color: el.color }}
+                 />
               </svg>
           );
       }

@@ -1,4 +1,4 @@
-import { VisualizerElement, AnimationTarget } from '../../types';
+import { VisualizerElement } from '../../types';
 
 // Helper: Hex to HSL
 export const hexToHSL = (H: string) => {
@@ -72,21 +72,6 @@ export const interpolateColor = (color1: string, color2: string, factor: number)
 
 
 // Helper: Get Preview Color
-export const getPreviewColor = (baseHex: string, target: AnimationTarget, value: number) => {
-  const { h, s, l } = hexToHSL(baseHex);
-  let finalH = h, finalS = s, finalL = l;
-
-  if (target === 'hue') finalH = (h + value);
-  else if (target === 'saturation') finalS = Math.min(100, Math.max(0, s + value));
-  else if (target === 'lightness') finalL = Math.min(100, Math.max(0, l + value));
-
-  // Normalize for preview
-  finalH = finalH % 360;
-  if (finalH < 0) finalH += 360;
-
-  return `hsl(${finalH}, ${finalS}%, ${finalL}%)`;
-};
-
 export const getDefaultFillEnabled = (type: VisualizerElement['type']) => {
     if (type === 'line' || type === 'freeform' || type === 'spline') return false;
     return true;
