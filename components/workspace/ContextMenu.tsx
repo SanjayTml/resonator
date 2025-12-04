@@ -3,9 +3,12 @@ import React from 'react';
 import { 
   Copy, Trash2, 
   AlignStartVertical, AlignCenterVertical, AlignEndVertical,
-  AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal 
+  AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
+  ChevronUp, ChevronDown, ChevronsUp, ChevronsDown
 } from 'lucide-react';
 import { VisualizerElement, Alignment } from '../../types';
+
+type LayerAction = 'bring-forward' | 'send-backward' | 'bring-to-front' | 'send-to-back';
 
 interface ContextMenuProps {
   x: number;
@@ -14,12 +17,13 @@ interface ContextMenuProps {
   onCopy: () => void;
   onDelete: () => void;
   onAlign: (alignment: Alignment) => void;
+  onLayerAction: (action: LayerAction) => void;
   selectedElement?: VisualizerElement;
   selectedCount: number;
 }
 
 const ContextMenu: React.FC<ContextMenuProps> = ({ 
-  x, y, onClose, onCopy, onDelete, onAlign, selectedElement, selectedCount 
+  x, y, onClose, onCopy, onDelete, onAlign, onLayerAction, selectedElement, selectedCount 
 }) => {
   return (
     <>
@@ -38,6 +42,25 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
                     <button onClick={() => { onAlign('middle'); onClose(); }} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-zinc-600 dark:text-zinc-300" title="Align Middle"><AlignCenterHorizontal size={14}/></button>
                     <button onClick={() => { onAlign('bottom'); onClose(); }} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-zinc-600 dark:text-zinc-300" title="Align Bottom"><AlignEndHorizontal size={14}/></button>
                 </div>
+                <div className="h-px bg-zinc-100 dark:bg-zinc-700 my-1"></div>
+              </>
+            )}
+
+            {selectedCount > 0 && (
+              <>
+                <div className="px-4 py-1 text-[10px] text-zinc-400 font-bold uppercase">Layer</div>
+                <button onClick={() => { onLayerAction('bring-forward'); onClose(); }} className="px-4 py-2 text-xs text-left hover:bg-zinc-100 dark:hover:bg-zinc-700 flex items-center gap-2">
+                  <ChevronUp size={12}/> Bring Forward
+                </button>
+                <button onClick={() => { onLayerAction('send-backward'); onClose(); }} className="px-4 py-2 text-xs text-left hover:bg-zinc-100 dark:hover:bg-zinc-700 flex items-center gap-2">
+                  <ChevronDown size={12}/> Send Backward
+                </button>
+                <button onClick={() => { onLayerAction('bring-to-front'); onClose(); }} className="px-4 py-2 text-xs text-left hover:bg-zinc-100 dark:hover:bg-zinc-700 flex items-center gap-2">
+                  <ChevronsUp size={12}/> Bring to Front
+                </button>
+                <button onClick={() => { onLayerAction('send-to-back'); onClose(); }} className="px-4 py-2 text-xs text-left hover:bg-zinc-100 dark:hover:bg-zinc-700 flex items-center gap-2">
+                  <ChevronsDown size={12}/> Send to Back
+                </button>
                 <div className="h-px bg-zinc-100 dark:bg-zinc-700 my-1"></div>
               </>
             )}

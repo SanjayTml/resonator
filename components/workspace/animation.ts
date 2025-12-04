@@ -30,8 +30,11 @@ export const interpolateKeyframes = (
     }
 
     for (let i = 0; i < sorted.length - 1; i++) {
-      if (input >= sorted[i].offset && input < sorted[i + 1].offset) {
-        return sorted[i].value;
+      const current = sorted[i];
+      const next = sorted[i + 1];
+      const threshold = current.offset + (next.offset - current.offset) / 2;
+      if (input < threshold) {
+        return current.value;
       }
     }
     return sorted[sorted.length - 1].value;

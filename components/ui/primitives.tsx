@@ -1,6 +1,5 @@
 import React from 'react';
-
-type ClassValue = string | false | null | undefined;
+import { cn } from './cn';
 
 const inputSizes = {
   xs: 'px-2 py-1 text-[10px]',
@@ -26,8 +25,6 @@ const sliderHeights = {
   thin: 'h-1',
   default: 'h-1.5',
 };
-
-export const cn = (...classes: ClassValue[]) => classes.filter(Boolean).join(' ');
 
 export interface TextInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   size?: keyof typeof inputSizes;

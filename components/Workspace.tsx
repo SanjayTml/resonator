@@ -9,7 +9,7 @@ import WorkspaceCanvas from './workspace/WorkspaceCanvas';
 import ContextMenu from './workspace/ContextMenu';
 import useHistoryManager from './workspace/hooks/useHistoryManager';
 import useAudioEngine from './workspace/hooks/useAudioEngine';
-import { findElementById, updateElementInList, removeElementFromList } from './workspace/elementTree';
+import { findElementById, updateElementInList, removeElementFromList, moveElementRelative, changeElementLayer, findElementPath, LayerShift } from './workspace/elementTree';
 import { interpolateKeyframes } from './workspace/animation';
 
 interface WorkspaceProps {
@@ -30,6 +30,15 @@ interface EditPointTarget {
 }
 
 const SPLINE_CLOSE_DISTANCE = 12;
+type LayerAction = 'bring-forward' | 'send-backward' | 'bring-to-front' | 'send-to-back';
+
+const comparePaths = (a: number[], b: number[]) => {
+  const len = Math.min(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    if (a[i] !== b[i]) return a[i] - b[i];
+  }
+  return a.length - b.length;
+};
 
 const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
   const {
@@ -546,6 +555,41 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
     pushHistory(updateList(elements));
   };
 
+  const handleLayerAction = (action: LayerAction) => {
+    if (selectedIds.size === 0) return;
+    const selectionWithPaths = Array.from(selectedIds)
+      .map(id => {
+        const path = findElementPath(elements, id);
+        return path ? { id, path } : null;
+      })
+      .filter((entry): entry is { id: string; path: number[] } => !!entry);
+
+    if (selectionWithPaths.length === 0) return;
+
+    const sorted = [...selectionWithPaths].sort((a, b) => comparePaths(a.path, b.path));
+    const actionConfig: Record<LayerAction, { direction: LayerShift; order: 'asc' | 'desc' }> = {
+      'bring-to-front': { direction: 'front', order: 'asc' },
+      'send-to-back': { direction: 'back', order: 'desc' },
+      'bring-forward': { direction: 'forward', order: 'desc' },
+      'send-backward': { direction: 'backward', order: 'asc' }
+    };
+
+    const { direction, order } = actionConfig[action];
+    const orderedEntries = order === 'asc' ? sorted : [...sorted].reverse();
+
+    let updated = elements;
+    orderedEntries.forEach(({ id }) => {
+      updated = changeElementLayer(updated, id, direction);
+    });
+
+    if (updated !== elements) pushHistory(updated);
+  };
+
+  const handleLayerReorder = (sourceId: string, targetId: string, position: 'before' | 'after') => {
+    const reordered = moveElementRelative(elements, sourceId, targetId, position);
+    if (reordered !== elements) pushHistory(reordered);
+  };
+
   const addSplinePoint = (elId: string, pointIndex: number, newPoint: {x: number, y: number}) => {
       setElements(prev => updateElementInList(prev, elId, {
           points: [
@@ -994,6 +1038,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
             onCopy={() => { if(selectedIds.size === 1) { const id = Array.from(selectedIds)[0] as string; const el = findElementById(id, elements); if(el) setClipboard(el); } }}
             onDelete={deleteSelected}
             onAlign={handleAlign}
+            onLayerAction={handleLayerAction}
             selectedElement={selectedIds.size === 1 ? findElementById(Array.from(selectedIds)[0] as string, elements) : undefined}
             selectedCount={selectedIds.size}
         />
@@ -1016,7 +1061,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
 
         <div className="flex-1 flex overflow-hidden">
             <WorkspaceLayers 
-                elements={elements} selectedIds={selectedIds} setSelectedIds={setSelectedIds} toolMode={toolMode} 
+                elements={elements} selectedIds={selectedIds} setSelectedIds={setSelectedIds} toolMode={toolMode}
+                onReorderLayer={handleLayerReorder}
             />
 
             {/* Center Area: Canvas + Footer */}
