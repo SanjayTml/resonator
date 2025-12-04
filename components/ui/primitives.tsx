@@ -76,18 +76,22 @@ export interface SelectInputProps extends React.SelectHTMLAttributes<HTMLSelectE
 
 export const SelectInput = React.forwardRef<HTMLSelectElement, SelectInputProps>(
   ({ size = 'sm', className, block = true, ...props }, ref) => (
-    <select
-      ref={ref}
-      className={cn(
-        baseInputStyles,
-        inputSizes[size],
-        block ? 'w-full' : 'w-auto',
-        'appearance-none pr-8 bg-[length:12px_12px] bg-[right_0.6rem_center] bg-no-repeat',
-        'bg-[url("data:image/svg+xml,%3Csvg width=\'14\' height=\'14\' viewBox=\'0 0 20 20\' fill=\'none\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M5 8L10 13L15 8\' stroke=\'%23818181\' stroke-width=\'1.5\' stroke-linecap=\'round\' stroke-linejoin=\'round\'/%3E%3C/svg%3E%0A")]',
-        className
-      )}
-      {...props}
-    />
+    <div className={cn('relative inline-flex items-center', block ? 'w-full' : 'w-auto')}>
+      <select
+        ref={ref}
+        className={cn(
+          baseInputStyles,
+          inputSizes[size],
+          block ? 'w-full' : 'w-auto',
+          'appearance-none pr-8',
+          className
+        )}
+        {...props}
+      />
+      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-400">
+        ▾
+      </span>
+    </div>
   )
 );
 SelectInput.displayName = 'SelectInput';
@@ -262,6 +266,7 @@ export const ValueSlider: React.FC<ValueSliderProps> = ({
   displayWidth = 48,
 }) => {
   const { className: numberInputClassName, ...restNumberInputProps } = numberInputProps || {};
+  const { className: sliderClassName, ...restSliderProps } = sliderProps || {};
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const next = parseFloat(e.target.value);
     if (!Number.isNaN(next)) onChange(next);
@@ -273,21 +278,22 @@ export const ValueSlider: React.FC<ValueSliderProps> = ({
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 w-full min-w-0">
       <Slider
         value={value}
         onChange={handleSliderChange}
         min={min}
         max={max}
         step={step}
-        {...sliderProps}
+        className={cn('flex-1 min-w-0', sliderClassName)}
+        {...restSliderProps}
       />
       <div className="relative" style={{ width: displayWidth }}>
         <NumberInput
           value={format ? format(value) : value}
           onChange={handleInputChange}
           size="xs"
-          className={cn('pr-5 text-center', numberInputClassName)}
+          className={cn('text-center', numberInputClassName)}
           {...restNumberInputProps}
         />
         {suffix && (
@@ -356,6 +362,7 @@ interface ColorInputProps {
   className?: string;
   shape?: 'circle' | 'square';
   inputProps?: TextInputProps;
+  swatchSize?: 'sm' | 'md';
 }
 
 export const ColorInput: React.FC<ColorInputProps> = ({
@@ -365,15 +372,21 @@ export const ColorInput: React.FC<ColorInputProps> = ({
   shape = 'circle',
   className,
   inputProps,
+  swatchSize = 'sm',
 }) => {
   const { className: inputClassName, ...restInputProps } = inputProps || {};
+  const swatchSizes = {
+    sm: 'w-8 h-8',
+    md: 'w-10 h-10',
+  };
 
   return (
     <div className={cn('flex items-center gap-3', className)}>
       <div
         className={cn(
           'relative border border-zinc-200 dark:border-zinc-600 shadow-inner overflow-hidden shrink-0',
-          shape === 'circle' ? 'rounded-full w-10 h-10' : 'rounded-lg w-10 h-10'
+          shape === 'circle' ? 'rounded-full' : 'rounded-lg',
+          swatchSizes[swatchSize]
         )}
       >
         <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: value }} />
@@ -389,7 +402,7 @@ export const ColorInput: React.FC<ColorInputProps> = ({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           size="sm"
-          className={cn('font-mono uppercase', inputClassName)}
+          className={cn('font-mono uppercase w-20', inputClassName)}
           {...restInputProps}
         />
       )}
@@ -397,12 +410,53 @@ export const ColorInput: React.FC<ColorInputProps> = ({
   );
 };
 
+interface ToggleProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  checked?: boolean;
+  onCheckedChange?: (checked: boolean) => void;
+}
+
+export const Toggle: React.FC<ToggleProps> = ({
+  checked = false,
+  onCheckedChange,
+  className,
+  disabled,
+  ...props
+}) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={checked}
+    disabled={disabled}
+    onClick={(e) => {
+      e.preventDefault();
+      if (disabled) return;
+      onCheckedChange?.(!checked);
+    }}
+    className={cn(
+      'relative inline-flex h-4 w-8 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/20',
+      checked ? 'bg-zinc-900 dark:bg-zinc-500' : 'bg-zinc-300 dark:bg-zinc-700',
+      disabled && 'opacity-60 cursor-not-allowed',
+      className
+    )}
+    {...props}
+  >
+    <span
+      className={cn(
+        'inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform',
+        checked ? 'translate-x-4' : 'translate-x-1'
+      )}
+    />
+  </button>
+);
+
 interface SectionCardProps extends React.HTMLAttributes<HTMLDivElement> {
   title: React.ReactNode;
   actions?: React.ReactNode;
   collapsible?: boolean;
   defaultOpen?: boolean;
   muted?: boolean;
+  open?: boolean;
+  onToggle?: (open: boolean) => void;
 }
 
 export const SectionCard: React.FC<SectionCardProps> = ({
@@ -411,6 +465,8 @@ export const SectionCard: React.FC<SectionCardProps> = ({
   collapsible,
   defaultOpen = true,
   muted,
+  open,
+  onToggle,
   children,
   className,
 }) => {
@@ -421,11 +477,48 @@ export const SectionCard: React.FC<SectionCardProps> = ({
   );
 
   if (collapsible) {
+    const isControlled = typeof open === 'boolean';
+    const handleToggle = (next: boolean) => {
+      onToggle?.(next);
+    };
+
     return (
-      <details open={defaultOpen} className={baseClasses}>
-        <summary className="flex items-center justify-between cursor-pointer select-none [&::-webkit-details-marker]:hidden">
-          <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100">{title}</span>
-          {actions}
+      <details
+        open={isControlled ? open : defaultOpen}
+        className={cn(baseClasses, 'group')}
+        onToggle={(e) => {
+          if (isControlled) {
+            e.preventDefault();
+            return;
+          }
+          handleToggle(e.currentTarget.open);
+        }}
+      >
+        <summary
+          className="flex items-center justify-between cursor-pointer select-none [&::-webkit-details-marker]:hidden"
+          onClick={(e) => {
+            if (isControlled) {
+              e.preventDefault();
+              handleToggle(!open);
+            }
+          }}
+        >
+          <span className="flex items-center gap-2 text-xs font-bold text-zinc-900 dark:text-zinc-100">
+            <span
+              className={cn(
+                'text-[10px] text-zinc-400 transition-transform',
+                isControlled ? (open ? 'rotate-180' : 'rotate-0') : 'group-open:rotate-180'
+              )}
+            >
+              ▾
+            </span>
+            {title}
+          </span>
+          {actions && (
+            <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-2">
+              {actions}
+            </div>
+          )}
         </summary>
         <div className="mt-3 space-y-3">{children}</div>
       </details>

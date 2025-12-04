@@ -1,23 +1,21 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Activity, X, Group, ArrowRight } from 'lucide-react';
 import { VisualizerElement, AnimationTrack, AnimationDriver, AnimationTarget } from '../../types';
 import { hexToHSL, hslToHex, getDefaultFillEnabled, getDefaultStrokeEnabled } from './utils';
 import { findElementById } from './elementTree';
 import { 
-  cn,
   Button, 
   IconButton, 
   TextInput, 
   NumberInput, 
   SelectInput, 
-  Checkbox, 
   FormField, 
   ValueSlider, 
-  SegmentedControl, 
   ColorInput, 
   SectionCard, 
-  SectionDivider 
+  SectionDivider,
+  Toggle
 } from '../ui/primitives';
 
 interface WorkspacePropertiesProps {
@@ -70,6 +68,9 @@ const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({ selectedIds, 
   const strokeEnabled = el.strokeEnabled ?? getDefaultStrokeEnabled(el.type);
   const strokeColor = el.strokeColor || el.color;
   const strokeWidthValue = el.type === 'line' ? el.height : (el.strokeWidth ?? 2);
+  const [fillSectionOpen, setFillSectionOpen] = useState(true);
+  const [outlineSectionOpen, setOutlineSectionOpen] = useState(true);
+  const [animationsOpen, setAnimationsOpen] = useState(true);
   const handleStrokeWidthChange = (value: number) => {
       if (Number.isNaN(value)) return;
       const clamped = Math.max(0, value);
@@ -136,7 +137,6 @@ const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({ selectedIds, 
                             min={0}
                             max={360}
                             step={1}
-                            suffix="°"
                             numberInputProps={{ step: 1 }}
                         />
                     </FormField>
@@ -163,57 +163,74 @@ const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({ selectedIds, 
                         <SectionCard
                             title="Fill"
                             collapsible
+                            open={fillSectionOpen}
+                            onToggle={setFillSectionOpen}
                             actions={
-                                <Checkbox
-                                    checked={fillEnabled}
-                                    onChange={(e) => onUpdate(id, { fillEnabled: e.target.checked })}
-                                    label={fillEnabled ? 'Enabled' : 'Disabled'}
-                                />
+                                <div className="flex items-center gap-2">
+                                    <SelectInput
+                                        size="xs"
+                                        block={false}
+                                        className="text-[11px] font-semibold"
+                                        value={el.fillType || 'solid'}
+                                        onChange={(e) => onUpdate(id, { fillType: e.target.value as 'solid' | 'gradient' })}
+                                    >
+                                        <option value="solid">Solid</option>
+                                        <option value="gradient">Gradient</option>
+                                    </SelectInput>
+                                    <Toggle
+                                        checked={fillEnabled}
+                                        onCheckedChange={(checked) => onUpdate(id, { fillEnabled: checked })}
+                                        aria-label="Toggle fill"
+                                    />
+                                </div>
                             }
                         >
-                            <SegmentedControl
-                                options={[
-                                    { label: 'Solid', value: 'solid' },
-                                    { label: 'Gradient', value: 'gradient' },
-                                ]}
-                                value={el.fillType || 'solid'}
-                                onChange={(val) => onUpdate(id, { fillType: val as 'solid' | 'gradient' })}
-                            />
-                            <div className={cn('space-y-3', !fillEnabled && 'opacity-50 pointer-events-none')}>
+                            <div className={`space-y-3 ${fillEnabled ? '' : 'opacity-40 pointer-events-none'}`}>
                                 {el.fillType === 'gradient' ? (
                                     <>
-                                        <FormField label="Start">
+                                        <div className="flex items-center gap-3">
+                                            <span className="w-16 text-[10px] font-bold uppercase text-zinc-400">Start</span>
                                             <ColorInput
                                                 value={el.gradient?.start || el.color}
                                                 onChange={(value) => onUpdate(id, { gradient: { ...(el.gradient || { end: el.color, angle: 90 }), start: value } })}
-                                                inputProps={{ size: 'sm' }}
+                                                swatchSize="sm"
+                                                className="flex-1"
                                             />
-                                        </FormField>
-                                        <FormField label="End">
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className="w-16 text-[10px] font-bold uppercase text-zinc-400">End</span>
                                             <ColorInput
                                                 value={el.gradient?.end || el.color}
                                                 onChange={(value) => onUpdate(id, { gradient: { ...(el.gradient || { start: el.color, angle: 90 }), end: value } })}
-                                                inputProps={{ size: 'sm' }}
+                                                swatchSize="sm"
+                                                className="flex-1"
                                             />
-                                        </FormField>
-                                        <FormField label="Angle">
-                                            <ValueSlider
-                                                value={el.gradient?.angle ?? 90}
-                                                onChange={(value) => onUpdate(id, { gradient: { ...(el.gradient || { start: el.color, end: el.color }), angle: value } })}
-                                                min={0}
-                                                max={360}
-                                                step={1}
-                                                suffix="°"
-                                                numberInputProps={{ step: 1 }}
-                                            />
-                                        </FormField>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className="w-16 text-[10px] font-bold uppercase text-zinc-400">Angle</span>
+                                            <div className="flex-1">
+                                                <ValueSlider
+                                                    value={el.gradient?.angle ?? 90}
+                                                    onChange={(value) => onUpdate(id, { gradient: { ...(el.gradient || { start: el.color, end: el.color }), angle: value } })}
+                                                    min={0}
+                                                    max={360}
+                                                    step={1}
+                                                    suffix="°"
+                                                    numberInputProps={{ step: 1 }}
+                                                />
+                                            </div>
+                                        </div>
                                     </>
                                 ) : (
-                                    <ColorInput
-                                        value={el.color}
-                                        onChange={(value) => onUpdate(id, { color: value })}
-                                        inputProps={{ size: 'sm' }}
-                                    />
+                                    <div className="flex items-center gap-3">
+                                        <span className="w-16 text-[10px] font-bold uppercase text-zinc-400">Color</span>
+                                        <ColorInput
+                                            value={el.color}
+                                            onChange={(value) => onUpdate(id, { color: value })}
+                                            swatchSize="sm"
+                                            className="flex-1"
+                                        />
+                                    </div>
                                 )}
                             </div>
                         </SectionCard>
@@ -222,34 +239,41 @@ const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({ selectedIds, 
                     <SectionCard
                         title="Outline"
                         collapsible
+                        open={outlineSectionOpen}
+                        onToggle={setOutlineSectionOpen}
                         actions={
-                            <Checkbox
+                            <Toggle
                                 checked={strokeEnabled}
-                                onChange={(e) => onUpdate(id, { strokeEnabled: e.target.checked })}
-                                label={strokeEnabled ? 'Enabled' : 'Disabled'}
+                                onCheckedChange={(checked) => onUpdate(id, { strokeEnabled: checked })}
+                                aria-label="Toggle outline"
                             />
                         }
                     >
-                        <div className={cn('space-y-3', !strokeEnabled && 'opacity-50 pointer-events-none')}>
-                            <FormField label="Color">
+                        <div className={`${strokeEnabled ? '' : 'opacity-40 pointer-events-none'} space-y-3`}>
+                            <div className="flex items-center gap-3">
+                                <span className="w-16 text-[10px] font-bold uppercase text-zinc-400">Color</span>
                                 <ColorInput
                                     value={strokeColor}
                                     onChange={(value) => onUpdate(id, { strokeColor: value })}
-                                    inputProps={{ size: 'sm' }}
+                                    swatchSize="sm"
+                                    className="flex-1"
                                 />
-                            </FormField>
-                            <FormField label="Width">
-                                <ValueSlider
-                                    value={strokeWidthValue}
-                                    onChange={handleStrokeWidthChange}
-                                    min={0}
-                                    max={40}
-                                    step={0.5}
-                                    format={(val) => val.toFixed(1)}
-                                    parse={(val) => parseFloat(val)}
-                                    numberInputProps={{ step: 0.5, min: 0 }}
-                                />
-                            </FormField>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <span className="w-16 text-[10px] font-bold uppercase text-zinc-400">Width</span>
+                                <div className="flex-1">
+                                    <ValueSlider
+                                        value={strokeWidthValue}
+                                        onChange={handleStrokeWidthChange}
+                                        min={0}
+                                        max={40}
+                                        step={0.5}
+                                        format={(val) => val.toFixed(1)}
+                                        parse={(val) => parseFloat(val)}
+                                        numberInputProps={{ step: 0.5, min: 0 }}
+                                    />
+                                </div>
+                            </div>
                         </div>
                     </SectionCard>
                 </div>
@@ -260,6 +284,9 @@ const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({ selectedIds, 
             {/* Animations */}
             <SectionCard
                 title={<span className="inline-flex items-center gap-2"><Activity size={14} className="text-zinc-500" /> Animations</span>}
+                collapsible
+                open={animationsOpen}
+                onToggle={setAnimationsOpen}
                 actions={
                     <Button
                         size="sm"
@@ -280,6 +307,7 @@ const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({ selectedIds, 
                     </Button>
                 }
             >
+                {animationsOpen && (
                 <div className="flex flex-col gap-4">
                     {el.animationTracks.map((track, idx) => (
                         <div key={track.id} className="bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-3 border border-zinc-200 dark:border-zinc-700 shadow-sm space-y-3">
@@ -482,6 +510,7 @@ const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({ selectedIds, 
                                                         value={hslToHex(hexToHSL(el.color).h + Number(kf.value), 100, 50)}
                                                         shape="square"
                                                         className="w-full"
+                                                        swatchSize="sm"
                                                         inputProps={{ size: 'xs', className: 'w-20 text-left font-mono uppercase' }}
                                                         onChange={(hex) => {
                                                             const targetH = hexToHSL(hex).h;
@@ -495,6 +524,7 @@ const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({ selectedIds, 
                                                     <ColorInput
                                                         value={String(kf.value)}
                                                         className="w-full"
+                                                        swatchSize="sm"
                                                         inputProps={{ size: 'xs', className: 'w-20 text-left font-mono uppercase' }}
                                                         onChange={(hex) => handleValueChange(hex)}
                                                     />
@@ -548,6 +578,7 @@ const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({ selectedIds, 
                         </div>
                     ))}
                 </div>
+                )}
             </SectionCard>
         </div>
     </div>
