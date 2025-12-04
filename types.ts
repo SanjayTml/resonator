@@ -38,6 +38,7 @@ export interface AppState {
 export type ElementType = 'circle' | 'rect' | 'bar' | 'triangle' | 'line' | 'group' | 'custom' | 'freeform' | 'spline';
 export type FrequencyRange = 'bass' | 'mid' | 'high';
 export type Alignment = 'top' | 'middle' | 'bottom' | 'left' | 'center' | 'right';
+export type GridVariant = 'straight' | 'diagonal' | 'dots';
 
 export type AnimationDriver = 'time' | 'audio';
 export type AnimationTarget =
