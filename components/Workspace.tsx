@@ -9,7 +9,7 @@ import WorkspaceCanvas from './workspace/WorkspaceCanvas';
 import ContextMenu from './workspace/ContextMenu';
 import useHistoryManager from './workspace/hooks/useHistoryManager';
 import useAudioEngine from './workspace/hooks/useAudioEngine';
-import { findElementById, updateElementInList, removeElementFromList, moveElementRelative, changeElementLayer, findElementPath, LayerShift } from './workspace/elementTree';
+import { findElementById, updateElementInList, removeElementFromList, moveElementRelative, changeElementLayer, findElementPath, LayerShift, findNearestGroupAncestor, findGroupAncestors, isDescendantOfGroup } from './workspace/elementTree';
 import { interpolateKeyframes } from './workspace/animation';
 
 interface WorkspaceProps {
@@ -40,6 +40,73 @@ const comparePaths = (a: number[], b: number[]) => {
   return a.length - b.length;
 };
 
+const randomId = () => Math.random().toString(36).substring(2, 11);
+
+const cloneElementWithNewIds = (element: VisualizerElement): VisualizerElement => {
+  const clonedChildren = element.children?.map(child => cloneElementWithNewIds(child));
+  const clonedPoints = element.points
+    ? element.points.map(p => ({
+        x: p.x,
+        y: p.y,
+        handleIn: p.handleIn ? { ...p.handleIn } : undefined,
+        handleOut: p.handleOut ? { ...p.handleOut } : undefined
+      }))
+    : undefined;
+  return {
+    ...element,
+    id: randomId(),
+    gradient: element.gradient ? { ...element.gradient } : element.gradient,
+    animationTracks: element.animationTracks.map(track => ({
+      ...track,
+      id: randomId(),
+      keyframes: track.keyframes.map(kf => ({ ...kf, id: randomId() }))
+    })),
+    children: clonedChildren,
+    points: clonedPoints
+  };
+};
+
+const recomputeGroupLayout = (group: VisualizerElement, svgW: number, svgH: number): VisualizerElement => {
+  if (!group.children || group.children.length === 0) return group;
+  let minL = Infinity, minT = Infinity, maxR = -Infinity, maxB = -Infinity;
+  group.children.forEach(child => {
+    const childCenterX = (group.x + child.x) * svgW;
+    const childCenterY = (group.y + child.y) * svgH;
+    const halfW = child.width / 2;
+    const halfH = child.height / 2;
+    minL = Math.min(minL, childCenterX - halfW);
+    maxR = Math.max(maxR, childCenterX + halfW);
+    minT = Math.min(minT, childCenterY - halfH);
+    maxB = Math.max(maxB, childCenterY + halfH);
+  });
+
+  if (!Number.isFinite(minL) || !Number.isFinite(minT) || !Number.isFinite(maxR) || !Number.isFinite(maxB)) return group;
+
+  const width = Math.max(10, maxR - minL);
+  const height = Math.max(10, maxB - minT);
+  const centerXNorm = ((minL + maxR) / 2) / svgW;
+  const centerYNorm = ((minT + maxB) / 2) / svgH;
+
+  const updatedChildren = group.children.map(child => {
+    const absChildX = group.x + child.x;
+    const absChildY = group.y + child.y;
+    return {
+      ...child,
+      x: absChildX - centerXNorm,
+      y: absChildY - centerYNorm
+    };
+  });
+
+  return {
+    ...group,
+    x: centerXNorm,
+    y: centerYNorm,
+    width,
+    height,
+    children: updatedChildren
+  };
+};
+
 const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
   const {
     elements,
@@ -63,6 +130,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
     handleFileUpload
   } = useAudioEngine();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [activeGroupEdit, setActiveGroupEdit] = useState<string | null>(null);
+  const [innerEditSelectionId, setInnerEditSelectionId] = useState<string | null>(null);
   const [clipboard, setClipboard] = useState<VisualizerElement | null>(null);
   const [projectName, setProjectName] = useState('Untitled Project');
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0 });
@@ -81,6 +150,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
   const drawingId = useRef<string | null>(null);
   const activeSplineId = useRef<string | null>(null);
   const editPointTarget = useRef<EditPointTarget | null>(null);
+  const draggingInnerElement = useRef(false);
 
   const startPos = useRef({ x: 0, y: 0 });
   const startEls = useRef<Map<string, VisualizerElement>>(new Map());
@@ -90,6 +160,55 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
   const panOffsetRef = useRef({ x: 0, y: 0 });
 
   const animationFrameRef = useRef<number>(0);
+
+  const getOutermostGroupId = (elementId: string): string | null => {
+    const ancestors = findGroupAncestors(elements, elementId);
+    if (ancestors.length > 0) return ancestors[ancestors.length - 1].id;
+    const el = findElementById(elementId, elements);
+    if (el?.type === 'group') return el.id;
+    return null;
+  };
+
+  const enterGroupEditMode = (elementId: string, focusElementId?: string) => {
+    const targetGroupId = getOutermostGroupId(elementId);
+    if (!targetGroupId) return false;
+    const group = findElementById(targetGroupId, elements);
+    if (!group || !group.children || group.children.length === 0) return false;
+    setElements(prev => updateGroupBounds(prev, targetGroupId));
+    setActiveGroupEdit(targetGroupId);
+    setSelectedIds(new Set([targetGroupId]));
+    if (
+      focusElementId &&
+      focusElementId !== targetGroupId &&
+      isDescendantOfGroup(elements, targetGroupId, focusElementId)
+    ) {
+      setInnerEditSelectionId(focusElementId);
+    } else {
+      setInnerEditSelectionId(null);
+    }
+    return true;
+  };
+
+  const exitGroupEditMode = () => {
+    setActiveGroupEdit(null);
+    setInnerEditSelectionId(null);
+    draggingInnerElement.current = false;
+  };
+
+  const updateGroupBounds = (list: VisualizerElement[], groupId: string): VisualizerElement[] => {
+    const svgRect = svgRef.current?.getBoundingClientRect();
+    if (!svgRect) return list;
+    const apply = (items: VisualizerElement[]): VisualizerElement[] => {
+      return items.map(el => {
+        if (el.id === groupId && el.children && el.children.length > 0) {
+          return recomputeGroupLayout(el, svgRect.width, svgRect.height);
+        }
+        if (el.children) return { ...el, children: apply(el.children) };
+        return el;
+      });
+    };
+    return apply(list);
+  };
 
   const maybeSnapSplineEndpoints = (points: VisualizerElement['points'], movedIndex: number) => {
     if (!points || points.length < 2) return false;
@@ -393,6 +512,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
     selectedIds.forEach(id => { newElements = removeElementFromList(newElements, id); });
     pushHistory(newElements);
     setSelectedIds(new Set());
+    setActiveGroupEdit(null);
+    setInnerEditSelectionId(null);
     activeSplineId.current = null;
   };
 
@@ -407,22 +528,35 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
     });
     if (selectedEls.length === 0) return;
 
-    let minX = 1, minY = 1, maxX = 0, maxY = 0;
+    const svgRect = svgRef.current?.getBoundingClientRect();
+    const svgW = svgRect?.width || 1;
+    const svgH = svgRect?.height || 1;
+
+    let minL = Infinity, minT = Infinity, maxR = -Infinity, maxB = -Infinity;
     selectedEls.forEach(el => {
-        minX = Math.min(minX, el.x);
-        minY = Math.min(minY, el.y);
-        maxX = Math.max(maxX, el.x);
-        maxY = Math.max(maxY, el.y);
+        const px = el.x * svgW;
+        const py = el.y * svgH;
+        const halfW = el.width / 2;
+        const halfH = el.height / 2;
+        minL = Math.min(minL, px - halfW);
+        minT = Math.min(minT, py - halfH);
+        maxR = Math.max(maxR, px + halfW);
+        maxB = Math.max(maxB, py + halfH);
     });
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
+
+    if (!Number.isFinite(minL) || !Number.isFinite(minT) || !Number.isFinite(maxR) || !Number.isFinite(maxB)) return;
+
+    const centerX = ((minL + maxR) / 2) / svgW;
+    const centerY = ((minT + maxB) / 2) / svgH;
+    const groupWidth = Math.max(10, maxR - minL);
+    const groupHeight = Math.max(10, maxB - minT);
     const children = selectedEls.map(el => ({ ...el, x: el.x - centerX, y: el.y - centerY }));
 
     const groupEl: VisualizerElement = {
         id: Math.random().toString(36).substring(2, 11),
         type: 'group',
         name: 'Group',
-        x: centerX, y: centerY, width: 100, height: 100, 
+        x: centerX, y: centerY, width: groupWidth, height: groupHeight, 
         color: '#ffffff', 
         fillType: 'solid',
         gradient: { start: '#ffffff', end: '#ffffff', angle: 90 },
@@ -493,6 +627,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
       }));
       pushHistory([...elements.filter(e => e.id !== id), ...unpacked]);
       setSelectedIds(new Set(unpacked.map(e => e.id)));
+      if (activeGroupEdit === id) exitGroupEditMode();
   };
 
   const handleAlign = (alignment: Alignment) => {
@@ -648,32 +783,52 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
             setIsSpacePressed(true);
             return;
         }
+        const key = e.key.toLowerCase();
         if (e.key === 'Delete' || e.key === 'Backspace') deleteSelected();
         if (e.key === 'Escape') {
-            if (toolMode === 'spline') { finishSpline(); setToolMode('pointer'); }
-            else setSelectedIds(new Set());
+            if (toolMode === 'spline') { 
+                finishSpline(); 
+                setToolMode('pointer'); 
+            } else if (activeGroupEdit) {
+                const currentGroup = activeGroupEdit;
+                exitGroupEditMode();
+                setSelectedIds(new Set([currentGroup]));
+            } else {
+                setSelectedIds(new Set());
+            }
             setContextMenu(prev => ({ ...prev, visible: false }));
         }
-        if ((e.ctrlKey || e.metaKey) && e.key === 'c' && selectedIds.size > 0) {
+        if ((e.ctrlKey || e.metaKey) && key === 'c' && selectedIds.size > 0) {
            const lastId = Array.from(selectedIds).pop() as string;
            if(lastId) { const el = findElementById(lastId, elements); if (el) setClipboard(el); }
         }
-        if ((e.ctrlKey || e.metaKey) && e.key === 'v' && clipboard) {
+        if ((e.ctrlKey || e.metaKey) && key === 'v' && clipboard) {
+            e.preventDefault();
             finishSpline();
+            const clone = cloneElementWithNewIds(clipboard);
             const newEl = { 
-                ...clipboard, id: Math.random().toString(36).substring(2, 11), 
-                x: clipboard.x + 0.03, y: clipboard.y + 0.03, name: `${clipboard.name} Copy`,
-                animationTracks: clipboard.animationTracks.map(t => ({...t, keyframes: [...t.keyframes]}))
+                ...clone,
+                x: clone.x + 0.03,
+                y: clone.y + 0.03,
+                name: `${clone.name} Copy`
             };
             pushHistory([...elements, newEl]);
             setSelectedIds(new Set([newEl.id]));
         }
-        if ((e.ctrlKey || e.metaKey) && e.key === 'z') e.shiftKey ? redo() : undo();
-        if ((e.ctrlKey || e.metaKey) && e.key === 'y') redo();
+        if ((e.ctrlKey || e.metaKey) && key === 'g') {
+            e.preventDefault();
+            handleGroup();
+        }
+        if ((e.ctrlKey || e.metaKey) && key === 'u') {
+            e.preventDefault();
+            handleUngroup();
+        }
+        if ((e.ctrlKey || e.metaKey) && key === 'z') e.shiftKey ? redo() : undo();
+        if ((e.ctrlKey || e.metaKey) && key === 'y') redo();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIds, clipboard, elements, historyLength, redoStackLength, toolMode]);
+  }, [selectedIds, clipboard, elements, historyLength, redoStackLength, toolMode, activeGroupEdit]);
 
   useEffect(() => {
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -694,7 +849,15 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
   const handleContextMenu = (e: React.MouseEvent, id?: string) => {
     e.preventDefault();
     e.stopPropagation();
-    if (id && !selectedIds.has(id)) setSelectedIds(new Set([id]));
+    if (id) {
+        const targetId = getOutermostGroupId(id) ?? id;
+        if (!selectedIds.has(targetId)) setSelectedIds(new Set([targetId]));
+        if (activeGroupEdit && !isDescendantOfGroup(elements, activeGroupEdit, id)) {
+            exitGroupEditMode();
+        }
+    } else if (activeGroupEdit) {
+        exitGroupEditMode();
+    }
     setContextMenu({ visible: true, x: e.clientX, y: e.clientY });
   };
 
@@ -702,6 +865,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
     if (e.button === 0) {
         e.stopPropagation();
         setContextMenu(prev => ({ ...prev, visible: false }));
+        draggingInnerElement.current = false;
 
         if (isSpacePressed) {
             dragMode.current = 'pan';
@@ -716,6 +880,9 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
              startPos.current = { x: e.clientX, y: e.clientY };
              return;
         }
+
+        const elementIdFromNode = (e.currentTarget as HTMLElement | null)?.getAttribute?.('data-element-id') || undefined;
+        const rawId = id ?? elementIdFromNode;
 
         if (toolMode === 'freeform' && svgRef.current) {
             isDrawing.current = true;
@@ -789,6 +956,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
             if (toolMode === 'pointer') { 
                 finishSpline(); 
                 setContextMenu(prev => ({ ...prev, visible: false }));
+                if (activeGroupEdit) exitGroupEditMode();
                 
                 // Start Marquee Selection if SVG available
                 if (svgRef.current) {
@@ -807,28 +975,75 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
             return;
         }
         
-        if (id) {
-            if (toolMode === 'pointer' && (e.ctrlKey || e.metaKey)) { /* toggle selection logic handled below via Shift checks */ }
-            
-            // Standard Multi-select Logic
-            if (e.shiftKey) {
-                const newSet = new Set(selectedIds);
-                if (newSet.has(id)) newSet.delete(id); else newSet.add(id);
-                setSelectedIds(newSet);
-            } else { 
-                if (!selectedIds.has(id)) setSelectedIds(new Set([id])); 
+        if (!rawId) {
+            if (activeGroupEdit) exitGroupEditMode();
+            if (!mode && toolMode === 'pointer') { 
+                finishSpline(); 
+                setContextMenu(prev => ({ ...prev, visible: false }));
+                
+                if (svgRef.current) {
+                    const rect = svgRef.current.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    setSelectionBox({ startX: x, startY: y, currentX: x, currentY: y, visible: true });
+                    dragMode.current = 'marquee';
+                    
+                    if (!e.shiftKey) {
+                        setSelectedIds(new Set());
+                    }
+                }
             }
-            
-            startEls.current.clear();
-            const allElements: VisualizerElement[] = [];
-            const collect = (list: VisualizerElement[]) => list.forEach(x => { allElements.push(x); if(x.children) collect(x.children); });
-            collect(elements);
-            
-            // Drag Start Snapshots
-            (selectedIds.has(id) && !e.shiftKey ? selectedIds : new Set([id])).forEach(selId => {
-                const el = allElements.find(x => x.id === selId);
-                if (el) startEls.current.set(selId, { ...el });
-            });
+            return;
+        }
+
+        if (toolMode === 'pointer' && e.detail === 2) {
+            if (enterGroupEditMode(rawId, rawId)) return;
+        }
+
+        const editingWithinGroup = !!(activeGroupEdit && isDescendantOfGroup(elements, activeGroupEdit, rawId));
+        if (activeGroupEdit && !editingWithinGroup) {
+            exitGroupEditMode();
+        }
+        const outerGroupId = getOutermostGroupId(rawId);
+        let selectionTargetId = outerGroupId ?? rawId;
+        if (editingWithinGroup && activeGroupEdit) selectionTargetId = activeGroupEdit;
+
+        if (toolMode === 'pointer' && (e.ctrlKey || e.metaKey)) { /* combination handled below */ }
+        
+        if (editingWithinGroup && rawId && rawId !== selectionTargetId) {
+            setInnerEditSelectionId(rawId);
+        } else if (!editingWithinGroup) {
+            setInnerEditSelectionId(null);
+        }
+
+        if (editingWithinGroup) {
+            setSelectedIds(new Set([selectionTargetId]));
+        } else if (e.shiftKey) {
+            const newSet = new Set(selectedIds);
+            if (newSet.has(selectionTargetId)) newSet.delete(selectionTargetId); else newSet.add(selectionTargetId);
+            setSelectedIds(newSet);
+        } else {
+            if (!selectedIds.has(selectionTargetId)) setSelectedIds(new Set([selectionTargetId]));
+        }
+        
+        startEls.current.clear();
+        const allElements: VisualizerElement[] = [];
+        const collect = (list: VisualizerElement[]) => list.forEach(x => { allElements.push(x); if(x.children) collect(x.children); });
+        collect(elements);
+        
+        const dragTargetId = editingWithinGroup ? rawId : selectionTargetId;
+        const dragSet = editingWithinGroup
+            ? new Set([dragTargetId])
+            : (selectedIds.has(selectionTargetId) && !e.shiftKey ? selectedIds : new Set([selectionTargetId]));
+        draggingInnerElement.current = editingWithinGroup && dragTargetId !== selectionTargetId;
+        
+        dragSet.forEach(selId => {
+            const el = allElements.find(x => x.id === selId);
+            if (el) startEls.current.set(selId, { ...el });
+        });
+        if (editingWithinGroup && dragSet.size === 0) {
+            const el = allElements.find(x => x.id === dragTargetId);
+            if (el) startEls.current.set(dragTargetId, { ...el });
         }
         dragMode.current = mode;
         startPos.current = { x: e.clientX, y: e.clientY };
@@ -926,7 +1141,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
              newElements = updateTree(newElements, id, () => updates);
         }
     });
-    setElements(newElements);
+    const applied = activeGroupEdit && draggingInnerElement.current
+        ? updateGroupBounds(newElements, activeGroupEdit)
+        : newElements;
+    setElements(applied);
   };
 
   const handleMouseUp = () => { 
@@ -934,6 +1152,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
           dragMode.current = null;
           panStartRef.current = null;
           setIsPanning(false);
+          draggingInnerElement.current = false;
           return;
       }
       if (dragMode.current === 'marquee') {
@@ -992,6 +1211,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
       if (toolMode === 'spline' && dragMode.current === 'create-tangent') { dragMode.current = null; return; }
       if (dragMode.current && dragMode.current.startsWith('edit-')) { dragMode.current = null; editPointTarget.current = null; return; }
       dragMode.current = null; startEls.current.clear(); 
+      draggingInnerElement.current = false;
   };
 
   const handleSplinePointMouseDown = (e: React.MouseEvent, elId: string, idx: number, type: 'anchor' | 'in' | 'out') => {
@@ -1066,6 +1286,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
             <WorkspaceLayers 
                 elements={elements} selectedIds={selectedIds} setSelectedIds={setSelectedIds} toolMode={toolMode}
                 onReorderLayer={handleLayerReorder}
+                innerSelectionId={innerEditSelectionId}
             />
 
             {/* Center Area: Canvas + Footer */}
@@ -1075,6 +1296,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
                 <div className="flex-1 relative">
                     <WorkspaceCanvas 
                         svgRef={svgRef} elementRefs={elementRefs} elements={elements} selectedIds={selectedIds}
+                        activeGroupEditId={activeGroupEdit}
+                        innerSelectionId={innerEditSelectionId}
                         onMouseDown={handleSVGMouseDown} onContextMenu={handleContextMenu}
                         onSplinePointMouseDown={handleSplinePointMouseDown}
                         selectionBox={selectionBox}
@@ -1097,6 +1320,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
 
             <WorkspaceProperties 
                 selectedIds={selectedIds} elements={elements} 
+                innerSelectionId={innerEditSelectionId}
                 onUpdate={(id, u) => { const newEls = updateElementInList(elements, id, u); pushHistory(newEls); }}
                 onGroup={handleGroup}
             />

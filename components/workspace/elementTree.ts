@@ -38,6 +38,64 @@ export const removeElementFromList = (
     });
 };
 
+export const findParentElement = (
+  list: VisualizerElement[],
+  id: string,
+  parent?: VisualizerElement
+): VisualizerElement | undefined => {
+  for (const el of list) {
+    if (el.id === id) return parent;
+    if (el.children) {
+      const found = findParentElement(el.children, id, el);
+      if (found) return found;
+    }
+  }
+  return undefined;
+};
+
+export const findNearestGroupAncestor = (
+  list: VisualizerElement[],
+  id: string
+): VisualizerElement | undefined => {
+  const parent = findParentElement(list, id);
+  if (!parent) return undefined;
+  if (parent.type === 'group') return parent;
+  return findNearestGroupAncestor(list, parent.id);
+};
+
+export const findGroupAncestors = (
+  list: VisualizerElement[],
+  id: string
+): VisualizerElement[] => {
+  const ancestors: VisualizerElement[] = [];
+  const recurse = (currentId: string) => {
+    const parent = findParentElement(list, currentId);
+    if (!parent) return;
+    if (parent.type === 'group') ancestors.push(parent);
+    recurse(parent.id);
+  };
+  recurse(id);
+  return ancestors;
+};
+
+export const isDescendantOfGroup = (
+  list: VisualizerElement[],
+  groupId: string,
+  targetId: string
+): boolean => {
+  if (groupId === targetId) return true;
+  const group = findElementById(groupId, list);
+  if (!group || !group.children) return false;
+  const search = (children: VisualizerElement[]): boolean => {
+    for (const child of children) {
+      if (child.id === targetId) return true;
+      if (child.children && search(child.children)) return true;
+    }
+    return false;
+  };
+  return search(group.children);
+};
+
 export const findElementPath = (
   list: VisualizerElement[],
   id: string,

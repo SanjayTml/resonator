@@ -7,6 +7,8 @@ interface WorkspaceCanvasProps {
   elementRefs: React.MutableRefObject<Map<string, SVGElement>>;
   elements: VisualizerElement[];
   selectedIds: Set<string>;
+  activeGroupEditId?: string | null;
+  innerSelectionId?: string | null;
   onMouseDown: (e: React.MouseEvent, mode: DragMode, id?: string) => void;
   onContextMenu: (e: React.MouseEvent, id?: string) => void;
   // Spline handlers
@@ -19,7 +21,7 @@ interface WorkspaceCanvasProps {
 }
 
 const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({ 
-  svgRef, elementRefs, elements, selectedIds, 
+  svgRef, elementRefs, elements, selectedIds, activeGroupEditId, innerSelectionId,
   onMouseDown, onContextMenu, onSplinePointMouseDown, selectionBox,
   canvasScale, canvasOffset, isPanning, isSpacePressed
 }) => {
@@ -52,7 +54,12 @@ const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
      );
   };
 
-  const renderShape = (el: VisualizerElement) => {
+  const renderShape = (el: VisualizerElement, outerGroupId?: string) => {
+      const currentOutermost = outerGroupId ?? (el.type === 'group' ? el.id : undefined);
+      const isInsideActiveGroup = !!(activeGroupEditId && currentOutermost && activeGroupEditId === currentOutermost);
+      const interactionId = isInsideActiveGroup
+          ? el.id
+          : (currentOutermost && currentOutermost !== el.id ? currentOutermost : el.id);
       const xStr = `${el.x * 100}%`;
       const yStr = `${el.y * 100}%`;
       const commonProps = { style: { transformOrigin: 'center', transformBox: 'fill-box' } as React.CSSProperties };
@@ -84,7 +91,14 @@ const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
 
       let shape;
       if (el.type === 'group') {
-         shape = <g>{el.children?.map(renderShape)}</g>;
+         const width = el.width;
+         const height = el.height;
+         shape = (
+            <g>
+                <rect x={-width/2} y={-height/2} width={width} height={height} fill="transparent" pointerEvents="visiblePainted" />
+                {el.children?.map(child => renderShape(child, currentOutermost ?? el.id))}
+            </g>
+         );
       } 
       else if (el.type === 'circle') shape = <circle data-shape-root cx="0" cy="0" r={el.width / 2} {...fillProp} {...strokeProp} {...commonProps} />;
       else if (el.type === 'rect' || el.type === 'bar') shape = <rect data-shape-root x={-el.width/2} y={-el.height/2} width={el.width} height={el.height} {...fillProp} {...strokeProp} {...commonProps} />;
@@ -119,28 +133,47 @@ const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
           );
       }
 
-      const isSelected = selectedIds.has(el.id);
+      const isInnerSelected = innerSelectionId === el.id;
+      const isSelected = selectedIds.has(el.id) || isInnerSelected;
+      const showSelectionOutline = ((selectedIds.has(el.id) || (activeGroupEditId === el.id && el.type === 'group')) && el.type !== 'spline') || (isInnerSelected && el.type !== 'spline');
+      const showHandles = selectedIds.has(el.id) && el.type !== 'spline';
+      const isActiveEditGroup = activeGroupEditId === el.id;
       return (
           <g key={el.id} style={{ translate: `${xStr} ${yStr}`, rotate: `${el.rotation}deg` }}>
              {defs}
              <g ref={node => { if(node) elementRefs.current.set(el.id, node as SVGElement); }} style={{ opacity: el.opacity }}>
                  <g 
-                    onMouseDown={(e) => onMouseDown(e, 'move', el.id)} 
-                    onContextMenu={(e) => onContextMenu(e, el.id)} 
+                    onMouseDown={(e) => onMouseDown(e, 'move', interactionId)} 
+                    onContextMenu={(e) => onContextMenu(e, interactionId)} 
+                    data-element-id={el.id}
                     className={`cursor-pointer transition-opacity ${isSelected ? 'opacity-100' : 'hover:opacity-80'}`}
-                 >
+                >
                     {shape}
                     
                     {/* Selection Border & Handles */}
-                    {isSelected && el.type !== 'spline' && (
-                        <g>
-                             <rect x={-el.width/2 - 2} y={-el.height/2 - 2} width={el.width + 4} height={el.height + 4} fill="none" stroke="#3b82f6" strokeWidth="1" pointerEvents="none" strokeDasharray="4 2" />
-                             
-                             <rect x={-el.width/2 - 6} y={-el.height/2 - 6} width={8} height={8} fill="white" stroke="#3b82f6" strokeWidth="1" className="cursor-nw-resize" onMouseDown={(e) => { e.stopPropagation(); onMouseDown(e, 'resize-tl', el.id); }} />
-                             <rect x={el.width/2 - 2} y={-el.height/2 - 6} width={8} height={8} fill="white" stroke="#3b82f6" strokeWidth="1" className="cursor-ne-resize" onMouseDown={(e) => { e.stopPropagation(); onMouseDown(e, 'resize-tr', el.id); }} />
-                             <rect x={-el.width/2 - 6} y={el.height/2 - 2} width={8} height={8} fill="white" stroke="#3b82f6" strokeWidth="1" className="cursor-sw-resize" onMouseDown={(e) => { e.stopPropagation(); onMouseDown(e, 'resize-bl', el.id); }} />
-                             <rect x={el.width/2 - 2} y={el.height/2 - 2} width={8} height={8} fill="white" stroke="#3b82f6" strokeWidth="1" className="cursor-se-resize" onMouseDown={(e) => { e.stopPropagation(); onMouseDown(e, 'resize-br', el.id); }} />
-                        </g>
+                    {showSelectionOutline && (
+                        <>
+                          <g pointerEvents="none">
+                               <rect 
+                                  x={-el.width/2 - 2} 
+                                  y={-el.height/2 - 2} 
+                                  width={el.width + 4} 
+                                  height={el.height + 4} 
+                                  fill={isActiveEditGroup ? 'rgba(59, 130, 246, 0.08)' : 'none'} 
+                                  stroke="#3b82f6" 
+                                  strokeWidth="1" 
+                                  strokeDasharray="4 2" 
+                               />
+                          </g>
+                          {showHandles && (
+                              <g>
+                                  <rect x={-el.width/2 - 6} y={-el.height/2 - 6} width={8} height={8} fill="white" stroke="#3b82f6" strokeWidth="1" className="cursor-nw-resize" onMouseDown={(e) => { e.stopPropagation(); onMouseDown(e, 'resize-tl', el.id); }} />
+                                  <rect x={el.width/2 - 2} y={-el.height/2 - 6} width={8} height={8} fill="white" stroke="#3b82f6" strokeWidth="1" className="cursor-ne-resize" onMouseDown={(e) => { e.stopPropagation(); onMouseDown(e, 'resize-tr', el.id); }} />
+                                  <rect x={-el.width/2 - 6} y={el.height/2 - 2} width={8} height={8} fill="white" stroke="#3b82f6" strokeWidth="1" className="cursor-sw-resize" onMouseDown={(e) => { e.stopPropagation(); onMouseDown(e, 'resize-bl', el.id); }} />
+                                  <rect x={el.width/2 - 2} y={el.height/2 - 2} width={8} height={8} fill="white" stroke="#3b82f6" strokeWidth="1" className="cursor-se-resize" onMouseDown={(e) => { e.stopPropagation(); onMouseDown(e, 'resize-br', el.id); }} />
+                              </g>
+                          )}
+                        </>
                     )}
                  </g>
              </g>
@@ -154,7 +187,7 @@ const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
             <div className="relative w-full h-full" style={transformStyle}>
                 <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05] pointer-events-none" style={{ backgroundImage: `linear-gradient(45deg, currentColor 25%, transparent 25%), linear-gradient(-45deg, currentColor 25%, transparent 25%), linear-gradient(45deg, transparent 75%, currentColor 75%), linear-gradient(-45deg, transparent 75%, currentColor 75%)`, backgroundSize: '20px 20px' }}></div>
                 <svg ref={svgRef} className="w-full h-full block select-none">
-                    {elements.map(renderShape)}
+                    {elements.map(el => renderShape(el))}
                     
                     {selectionBox && selectionBox.visible && (
                         <rect 

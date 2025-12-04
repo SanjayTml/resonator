@@ -23,9 +23,10 @@ interface WorkspacePropertiesProps {
   elements: VisualizerElement[];
   onUpdate: (id: string, updates: Partial<VisualizerElement>) => void;
   onGroup: () => void;
+  innerSelectionId?: string | null;
 }
 
-const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({ selectedIds, elements, onUpdate, onGroup }) => {
+const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({ selectedIds, elements, onUpdate, onGroup, innerSelectionId }) => {
   const getAllElements = (list: VisualizerElement[]): {id: string, name: string}[] => {
       let result: {id: string, name: string}[] = [];
       list.forEach(el => {
@@ -35,7 +36,9 @@ const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({ selectedIds, 
       return result;
   };
 
-  if (selectedIds.size === 0) {
+  const effectiveSelection = innerSelectionId ? new Set([innerSelectionId]) : selectedIds;
+
+  if (effectiveSelection.size === 0) {
       return (
         <div className="w-80 border-l border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col overflow-y-auto shrink-0 z-20 custom-scrollbar">
             <div className="p-4 border-b border-zinc-100 dark:border-zinc-800"><span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Properties</span></div>
@@ -46,20 +49,20 @@ const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({ selectedIds, 
       );
   }
 
-  if (selectedIds.size > 1) {
+  if (effectiveSelection.size > 1) {
       return (
         <div className="w-80 border-l border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col overflow-y-auto shrink-0 z-20 custom-scrollbar">
             <div className="p-4 border-b border-zinc-100 dark:border-zinc-800"><span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Properties</span></div>
             <div className="p-8 text-center text-zinc-500">
                 <Group size={32} className="mx-auto mb-4 text-zinc-300"/>
-                <p>{selectedIds.size} items selected</p>
+                <p>{effectiveSelection.size} items selected</p>
                 <Button size="sm" className="mt-4" onClick={onGroup}>Group Items</Button>
             </div>
         </div>
       );
   }
 
-  const id = Array.from(selectedIds)[0] as string;
+  const id = Array.from(effectiveSelection)[0] as string;
   const el = findElementById(id, elements);
   if (!el) return null;
   const allElementsList = getAllElements(elements).filter(item => item.id !== id);

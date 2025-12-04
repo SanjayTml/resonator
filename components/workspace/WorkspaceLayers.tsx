@@ -1,7 +1,8 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Group, Circle, ChevronRight, ChevronDown, Square, Triangle, Minus, Image as ImageIcon, PenTool, MousePointer2 } from 'lucide-react';
 import { VisualizerElement } from '../../types';
+import { findGroupAncestors } from './elementTree';
 
 interface WorkspaceLayersProps {
   elements: VisualizerElement[];
@@ -9,12 +10,24 @@ interface WorkspaceLayersProps {
   setSelectedIds: (ids: Set<string>) => void;
   toolMode: string;
   onReorderLayer: (sourceId: string, targetId: string, position: 'before' | 'after') => void;
+  innerSelectionId?: string | null;
 }
 
-const WorkspaceLayers: React.FC<WorkspaceLayersProps> = ({ elements, selectedIds, setSelectedIds, toolMode, onReorderLayer }) => {
+const WorkspaceLayers: React.FC<WorkspaceLayersProps> = ({ elements, selectedIds, setSelectedIds, toolMode, onReorderLayer, innerSelectionId }) => {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<{ id: string; position: 'above' | 'below' } | null>(null);
+
+  useEffect(() => {
+    if (!innerSelectionId) return;
+    const ancestors = findGroupAncestors(elements, innerSelectionId);
+    if (ancestors.length === 0) return;
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      ancestors.forEach(ancestor => next.add(ancestor.id));
+      return next;
+    });
+  }, [innerSelectionId, elements]);
 
   const resetDragState = () => {
     setDraggingId(null);
@@ -43,7 +56,8 @@ const WorkspaceLayers: React.FC<WorkspaceLayersProps> = ({ elements, selectedIds
   };
 
   const renderLayer = (el: VisualizerElement, depth: number = 0, isParentReversed: boolean = true) => {
-    const isSelected = selectedIds.has(el.id);
+    const isInnerFocused = innerSelectionId === el.id;
+    const isSelected = selectedIds.has(el.id) || isInnerFocused;
     const isExpanded = expandedIds.has(el.id);
     const hasChildren = el.type === 'group' && el.children && el.children.length > 0;
     const isDragTarget = dragOver?.id === el.id;
