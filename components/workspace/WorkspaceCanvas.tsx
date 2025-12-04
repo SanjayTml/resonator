@@ -31,7 +31,6 @@ const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
 
   const renderSplineControls = (el: VisualizerElement) => {
      if (el.type !== 'spline' || !el.points || !selectedIds.has(el.id)) return null;
-     // ... (Existing implementation, no change needed here)
      return (
          <g>
              {el.points.map((p, i) => {

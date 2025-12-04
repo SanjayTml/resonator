@@ -4,6 +4,7 @@ import {
   Play, Pause, Mic, Monitor, Music, Upload, Volume2 
 } from 'lucide-react';
 import { AudioSourceType } from '../../types';
+import { Button, IconButton, Slider } from '../ui/primitives';
 
 interface WorkspaceFooterProps {
   isPlaying: boolean;
@@ -27,9 +28,16 @@ const WorkspaceFooter: React.FC<WorkspaceFooterProps> = ({
     <div className="w-full max-w-3xl bg-white dark:bg-zinc-900 rounded-2xl p-2 flex flex-col gap-2">
         <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-                <button onClick={() => setIsPlaying(!isPlaying)} className="w-10 h-10 rounded-full bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 flex items-center justify-center hover:scale-105 transition-transform shadow-sm">
+                <Button
+                    onClick={() => setIsPlaying(!isPlaying)}
+                    size="sm"
+                    variant="primary"
+                    iconOnly
+                    className="w-10 h-10 rounded-full"
+                    aria-label={isPlaying ? 'Pause playback' : 'Play'}
+                >
                     {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-0.5" />}
-                </button>
+                </Button>
                 <div className="flex flex-col ml-1">
                         <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100 max-w-[150px] truncate">{trackTitle}</span>
                         <span className="text-[10px] text-zinc-500 uppercase tracking-wider">{sourceType}</span>
@@ -37,16 +45,51 @@ const WorkspaceFooter: React.FC<WorkspaceFooterProps> = ({
             </div>
 
             <div className="flex items-center bg-zinc-100 dark:bg-zinc-800/50 rounded-xl p-1">
-                <button onClick={() => setSourceType(AudioSourceType.MICROPHONE)} className={`p-2 rounded-lg ${sourceType === AudioSourceType.MICROPHONE ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100' : 'text-zinc-400'}`} title="Microphone"><Mic size={16}/></button>
-                <button onClick={onTabShare} className={`p-2 rounded-lg ${sourceType === AudioSourceType.TAB ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100' : 'text-zinc-400'}`} title="Tab Audio"><Monitor size={16}/></button>
-                <button onClick={() => fileImportRef.current?.click()} className={`p-2 rounded-lg ${sourceType === AudioSourceType.FILE ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100' : 'text-zinc-400'}`} title="Upload File"><Upload size={16}/></button>
-                <button onClick={() => setSourceType(AudioSourceType.OSCILLATOR)} className={`p-2 rounded-lg ${sourceType === AudioSourceType.OSCILLATOR ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100' : 'text-zinc-400'}`} title="Demo"><Music size={16}/></button>
+                <IconButton
+                    onClick={() => setSourceType(AudioSourceType.MICROPHONE)}
+                    active={sourceType === AudioSourceType.MICROPHONE}
+                    title="Microphone"
+                    aria-label="Use microphone"
+                >
+                    <Mic size={16}/>
+                </IconButton>
+                <IconButton
+                    onClick={onTabShare}
+                    active={sourceType === AudioSourceType.TAB}
+                    title="Tab Audio"
+                    aria-label="Share tab audio"
+                >
+                    <Monitor size={16}/>
+                </IconButton>
+                <IconButton
+                    onClick={() => fileImportRef.current?.click()}
+                    active={sourceType === AudioSourceType.FILE}
+                    title="Upload File"
+                    aria-label="Upload audio file"
+                >
+                    <Upload size={16}/>
+                </IconButton>
+                <IconButton
+                    onClick={() => setSourceType(AudioSourceType.OSCILLATOR)}
+                    active={sourceType === AudioSourceType.OSCILLATOR}
+                    title="Demo"
+                    aria-label="Use demo tone"
+                >
+                    <Music size={16}/>
+                </IconButton>
                 <input ref={fileImportRef} type="file" accept="audio/*" className="hidden" onChange={onFileUpload} />
             </div>
 
             <div className="flex items-center gap-2">
                     <Volume2 size={16} className="text-zinc-400"/>
-                    <input type="range" min="0" max="1" step="0.05" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className="w-20 h-1 bg-zinc-200 dark:bg-zinc-700 rounded-full appearance-none accent-zinc-900 dark:accent-zinc-100" />
+                    <Slider
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={volume}
+                        onChange={(e) => setVolume(parseFloat(e.target.value))}
+                        className="w-24"
+                    />
             </div>
         </div>
     </div>
