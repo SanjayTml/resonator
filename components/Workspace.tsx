@@ -59,6 +59,141 @@ type LayerAction =
   | "bring-to-front"
   | "send-to-back";
 
+interface SnapGuideState {
+  vertical?: number;
+  horizontal?: number;
+  objectVertical?: number;
+  objectHorizontal?: number;
+  objectWidth?: number;
+  objectHeight?: number;
+  objectId?: string;
+}
+
+const flattenElementsList = (list: VisualizerElement[]): VisualizerElement[] => {
+  const result: VisualizerElement[] = [];
+  const walk = (items: VisualizerElement[]) => {
+    items.forEach((el) => {
+      result.push(el);
+      if (el.children) walk(el.children);
+    });
+  };
+  walk(list);
+  return result;
+};
+
+const SNAP_THRESHOLD_PX = 8;
+const getGridSpacing = (variant: GridVariant): number => {
+  if (variant === "dots") return 18;
+  if (variant === "straight") return 32;
+  return 24;
+};
+
+interface SnapComputationParams {
+  dx: number;
+  dy: number;
+  svgRect: DOMRect;
+  start: VisualizerElement;
+  elements: VisualizerElement[];
+  movingId: string;
+  gridVariant: GridVariant;
+  enableGridSnap: boolean;
+}
+
+const computeSnapForMove = ({
+  dx,
+  dy,
+  svgRect,
+  start,
+  elements,
+  movingId,
+  gridVariant,
+  enableGridSnap,
+}: SnapComputationParams): { dx: number; dy: number; guides: SnapGuideState } => {
+  const startCenterX = start.x * svgRect.width;
+  const startCenterY = start.y * svgRect.height;
+  const startLeft = startCenterX - start.width / 2;
+  const startRight = startCenterX + start.width / 2;
+  const startTop = startCenterY - start.height / 2;
+  const startBottom = startCenterY + start.height / 2;
+
+  const verticalTargets: number[] = [];
+  const horizontalTargets: number[] = [];
+
+  elements.forEach((el) => {
+    if (el.id === movingId) return;
+    const centerX = el.x * svgRect.width;
+    const centerY = el.y * svgRect.height;
+    const halfW = el.width / 2;
+    const halfH = el.height / 2;
+    verticalTargets.push(centerX, centerX - halfW, centerX + halfW);
+    horizontalTargets.push(centerY, centerY - halfH, centerY + halfH);
+  });
+
+  if (enableGridSnap) {
+    const spacing = getGridSpacing(gridVariant);
+    if (spacing > 0) {
+      for (let x = 0; x <= svgRect.width; x += spacing) {
+        verticalTargets.push(x);
+      }
+      for (let y = 0; y <= svgRect.height; y += spacing) {
+        horizontalTargets.push(y);
+      }
+    }
+  }
+
+  const guides: SnapGuideState = {};
+
+  const applyAxisSnap = (
+    basePositions: number[],
+    delta: number,
+    targets: number[]
+  ): { delta: number; guide?: number } => {
+    let best: { adjust: number; guide: number; diff: number } | null = null;
+    basePositions.forEach((base) => {
+      const current = base + delta;
+      targets.forEach((target) => {
+        const diff = Math.abs(current - target);
+        if (diff <= SNAP_THRESHOLD_PX) {
+          if (!best || diff < best.diff) {
+            best = { adjust: target - current, guide: target, diff };
+          }
+        }
+      });
+    });
+    if (best) {
+      return { delta: delta + best.adjust, guide: best.guide };
+    }
+    return { delta };
+  };
+
+  const xSnap = applyAxisSnap(
+    [startLeft, startCenterX, startRight],
+    dx,
+    verticalTargets
+  );
+  const ySnap = applyAxisSnap(
+    [startTop, startCenterY, startBottom],
+    dy,
+    horizontalTargets
+  );
+
+  if (xSnap.guide !== undefined && svgRect.width > 0)
+    guides.vertical = xSnap.guide / svgRect.width;
+  if (ySnap.guide !== undefined && svgRect.height > 0)
+    guides.horizontal = ySnap.guide / svgRect.height;
+
+  const finalDx = xSnap.delta;
+  const finalDy = ySnap.delta;
+
+  guides.objectVertical = startCenterX + finalDx;
+  guides.objectHorizontal = startCenterY + finalDy;
+  guides.objectWidth = start.width;
+  guides.objectHeight = start.height;
+  guides.objectId = movingId;
+
+  return { dx: finalDx, dy: finalDy, guides };
+};
+
 const comparePaths = (a: number[], b: number[]) => {
   const len = Math.min(a.length, b.length);
   for (let i = 0; i < len; i++) {
@@ -194,6 +329,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
   const [isPanning, setIsPanning] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
   const [gridVariant, setGridVariant] = useState<GridVariant>("straight");
+  const [snapGuides, setSnapGuides] = useState<SnapGuideState | null>(null);
 
   // Selection Box State
   const [selectionBox, setSelectionBox] = useState<SelectionBox>({
@@ -1316,13 +1452,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
       }
 
       startEls.current.clear();
-      const allElements: VisualizerElement[] = [];
-      const collect = (list: VisualizerElement[]) =>
-        list.forEach((x) => {
-          allElements.push(x);
-          if (x.children) collect(x.children);
-        });
-      collect(elements);
+      const allElements = flattenElementsList(elements);
 
       const dragTargetId = editingWithinGroup ? rawId : selectionTargetId;
       const dragSet = editingWithinGroup
@@ -1481,11 +1611,44 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
       });
     };
 
+    let appliedDx = dx;
+    let appliedDy = dy;
+
+    if (
+      dragMode.current === "move" &&
+      e.shiftKey &&
+      startEls.current.size === 1
+    ) {
+      const entry = startEls.current.entries().next().value as
+        | [string, VisualizerElement]
+        | undefined;
+      if (entry) {
+        const [movingId, startEl] = entry;
+        const snapResult = computeSnapForMove({
+          dx,
+          dy,
+          svgRect,
+          start: startEl,
+          elements: flattenElementsList(elements),
+          movingId,
+          gridVariant,
+          enableGridSnap: showGrid,
+        });
+        appliedDx = snapResult.dx;
+        appliedDy = snapResult.dy;
+        setSnapGuides(snapResult.guides);
+      } else if (snapGuides) {
+        setSnapGuides(null);
+      }
+    } else if (snapGuides) {
+      setSnapGuides(null);
+    }
+
     startEls.current.forEach((start, id) => {
       if (dragMode.current === "move") {
         newElements = updateTree(newElements, id, () => ({
-          x: start.x + dx / svgRect.width,
-          y: start.y + dy / svgRect.height,
+          x: start.x + appliedDx / svgRect.width,
+          y: start.y + appliedDy / svgRect.height,
         }));
       } else if (selectedIds.size === 1) {
         let updates = {};
@@ -1524,6 +1687,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
   };
 
   const handleMouseUp = () => {
+    if (snapGuides) setSnapGuides(null);
     if (dragMode.current === "pan") {
       dragMode.current = null;
       panStartRef.current = null;
@@ -1771,12 +1935,13 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
                 onSplinePointMouseDown={handleSplinePointMouseDown}
                 selectionBox={selectionBox}
                 canvasScale={canvasScale}
-                canvasOffset={canvasOffset}
-                isPanning={isPanning}
-                isSpacePressed={isSpacePressed}
-                showGrid={showGrid}
-                gridVariant={gridVariant}
-              />
+                        canvasOffset={canvasOffset}
+                        isPanning={isPanning}
+                        isSpacePressed={isSpacePressed}
+                        showGrid={showGrid}
+                        gridVariant={gridVariant}
+                        snapGuides={snapGuides}
+                    />
             </div>
 
             {/* Footer Container - Static below canvas */}

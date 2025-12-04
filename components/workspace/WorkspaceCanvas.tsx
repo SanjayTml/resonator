@@ -13,6 +13,16 @@ import {
   resolveStrokeWidth,
 } from "./utils";
 
+interface SnapGuideOverlay {
+  vertical?: number;
+  horizontal?: number;
+  objectVertical?: number;
+  objectHorizontal?: number;
+  objectWidth?: number;
+  objectHeight?: number;
+  objectId?: string;
+}
+
 interface WorkspaceCanvasProps {
   svgRef: RefObject<SVGSVGElement | null>;
   elementRefs: React.MutableRefObject<Map<string, SVGElement>>;
@@ -36,6 +46,7 @@ interface WorkspaceCanvasProps {
   isSpacePressed: boolean;
   showGrid: boolean;
   gridVariant: GridVariant;
+  snapGuides?: SnapGuideOverlay | null;
 }
 
 const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
@@ -55,6 +66,7 @@ const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
   isSpacePressed,
   showGrid,
   gridVariant,
+  snapGuides,
 }) => {
   const transformStyle: React.CSSProperties = {
     transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px) scale(${canvasScale})`,
@@ -352,6 +364,8 @@ const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
       (isInnerSelected && el.type !== "spline");
     const showHandles = selectedIds.has(el.id) && el.type !== "spline";
     const isActiveEditGroup = activeGroupEditId === el.id;
+    const centerNorm = `${el.x},${el.y}`;
+    const dataSize = `${el.width},${el.height}`;
     return (
       <g
         key={el.id}
@@ -362,6 +376,8 @@ const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
           ref={(node) => {
             if (node) elementRefs.current.set(el.id, node as SVGElement);
           }}
+          data-element-center={centerNorm}
+          data-element-size={dataSize}
           style={{ opacity: el.opacity }}
         >
           <g
@@ -459,6 +475,36 @@ const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
     );
   };
 
+  let snapObjectMetrics: { centerX: number; centerY: number; width: number; height: number } | null = null;
+  if (snapGuides?.objectId && svgRef.current) {
+    const node = elementRefs.current.get(snapGuides.objectId);
+    if (node) {
+      const norm = node.getAttribute("data-element-center");
+      const dims = node.getAttribute("data-element-size");
+      if (norm && dims) {
+        const [normX, normY] = norm.split(",").map(Number);
+        const [elW, elH] = dims.split(",").map(Number);
+        const svgWidth = svgRef.current.clientWidth || svgRef.current.getBoundingClientRect().width;
+        const svgHeight = svgRef.current.clientHeight || svgRef.current.getBoundingClientRect().height;
+        snapObjectMetrics = {
+          centerX: normX * svgWidth,
+          centerY: normY * svgHeight,
+          width: elW,
+          height: elH,
+        };
+      } else {
+        const baseRect = node.getBoundingClientRect();
+        const svgRect = svgRef.current.getBoundingClientRect();
+        snapObjectMetrics = {
+          centerX: baseRect.left + baseRect.width / 2 - svgRect.left,
+          centerY: baseRect.top + baseRect.height / 2 - svgRect.top,
+          width: baseRect.width,
+          height: baseRect.height,
+        };
+      }
+    }
+  }
+
   return (
     <div className="w-full h-full bg-zinc-50/50 dark:bg-zinc-950/50 flex flex-col overflow-hidden">
       <div
@@ -491,6 +537,64 @@ const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
               />
             )}
           </svg>
+          {snapGuides && (
+            <div className="absolute inset-0 pointer-events-none z-20">
+              {typeof (snapObjectMetrics?.centerX ?? snapGuides.objectVertical) ===
+                "number" && (
+                <div
+                  className="absolute"
+                  style={{
+                    left: snapObjectMetrics?.centerX ?? snapGuides.objectVertical,
+                    top:
+                      (snapObjectMetrics?.centerY ?? snapGuides.objectHorizontal ?? 0) -
+                      (snapObjectMetrics?.height ?? snapGuides.objectHeight ?? 0) / 2 -
+                      12,
+                    height:
+                      (snapObjectMetrics?.height ?? snapGuides.objectHeight ?? 0) + 24,
+                    borderLeft: "1px dashed rgba(16, 185, 129, 0.5)",
+                  }}
+                ></div>
+              )}
+              {typeof (snapObjectMetrics?.centerY ?? snapGuides.objectHorizontal) ===
+                "number" && (
+                <div
+                  className="absolute"
+                  style={{
+                    top: snapObjectMetrics?.centerY ?? snapGuides.objectHorizontal,
+                    left:
+                      (snapObjectMetrics?.centerX ?? snapGuides.objectVertical ?? 0) -
+                      (snapObjectMetrics?.width ?? snapGuides.objectWidth ?? 0) / 2 -
+                      12,
+                    width:
+                      (snapObjectMetrics?.width ?? snapGuides.objectWidth ?? 0) + 24,
+                    borderTop: "1px dashed rgba(16, 185, 129, 0.5)",
+                  }}
+                ></div>
+              )}
+              {typeof snapGuides.vertical === "number" && svgRef.current && (
+                <div
+                  className="absolute top-0 bottom-0 w-px bg-emerald-500/80 shadow-[0_0_0_1px_rgba(16,185,129,0.3)]"
+                  style={{
+                    left:
+                      snapGuides.vertical *
+                      (svgRef.current.clientWidth ||
+                        svgRef.current.getBoundingClientRect().width),
+                  }}
+                ></div>
+              )}
+              {typeof snapGuides.horizontal === "number" && svgRef.current && (
+                <div
+                  className="absolute left-0 right-0 h-px bg-emerald-500/80 shadow-[0_0_0_1px_rgba(16,185,129,0.3)]"
+                  style={{
+                    top:
+                      snapGuides.horizontal *
+                      (svgRef.current.clientHeight ||
+                        svgRef.current.getBoundingClientRect().height),
+                  }}
+                ></div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
