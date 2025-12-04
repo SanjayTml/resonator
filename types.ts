@@ -73,6 +73,10 @@ export interface VisualizerElement {
     end: string;
     angle: number;
   };
+  fillEnabled?: boolean;
+  strokeEnabled?: boolean;
+  strokeColor?: string;
+  strokeWidth?: number;
   rotation: number;
   opacity: number;
   animationTracks: AnimationTrack[];
@@ -89,6 +93,8 @@ export interface VisualizerElement {
     handleIn?: { x: number, y: number };
     handleOut?: { x: number, y: number };
   }[];
+  // Indicates whether a spline connects its last point back to the first
+  isClosed?: boolean;
   // Boolean Ops / Masking
   maskId?: string; // ID of the element masking this one (Subtraction)
 }

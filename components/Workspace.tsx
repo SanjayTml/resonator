@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { VisualizerElement, ElementType, DragMode, SelectionBox, Alignment } from '../types';
-import { hexToHSL, generateMergedElement, generateSubtractedElement } from './workspace/utils';
+import { hexToHSL, generateMergedElement, generateSubtractedElement, isFillActive, isStrokeActive } from './workspace/utils';
 import WorkspaceHeader from './workspace/WorkspaceHeader';
 import WorkspaceLayers from './workspace/WorkspaceLayers';
 import WorkspaceFooter from './workspace/WorkspaceFooter';
@@ -28,6 +28,8 @@ interface EditPointTarget {
     pointIndex: number;
     type: 'anchor' | 'in' | 'out';
 }
+
+const SPLINE_CLOSE_DISTANCE = 12;
 
 const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
   const {
@@ -79,6 +81,22 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
   const panOffsetRef = useRef({ x: 0, y: 0 });
 
   const animationFrameRef = useRef<number>(0);
+
+  const maybeSnapSplineEndpoints = (points: VisualizerElement['points'], movedIndex: number) => {
+    if (!points || points.length < 2) return false;
+    const lastIndex = points.length - 1;
+    if (movedIndex !== 0 && movedIndex !== lastIndex) return false;
+    const otherIndex = movedIndex === 0 ? lastIndex : 0;
+    const moved = points[movedIndex];
+    const other = points[otherIndex];
+    if (!moved || !other) return false;
+    const dist = Math.hypot(moved.x - other.x, moved.y - other.y);
+    if (dist <= SPLINE_CLOSE_DISTANCE) {
+        points[movedIndex] = { ...moved, x: other.x, y: other.y };
+        return true;
+    }
+    return false;
+  };
 
   const normalizeSpline = (id: string, list: VisualizerElement[]) => {
     const el = findElementById(id, list);
@@ -237,16 +255,22 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
          
          // Apply Color (If Gradient, we don't apply fill color unless overridden by animation, usually gradients are static in appearance)
          // But if animating 'color' target, we override the fill.
-         if (el.type === 'line' || el.type === 'freeform' || el.type === 'spline') {
-             innerNode.style.stroke = colorString;
-         } else if (el.type !== 'group' && el.type !== 'custom') { 
-             // Only override fill if not a gradient, OR if explicitly animating color (which overrides gradient)
-             if (el.fillType !== 'gradient' || colorOverride) {
-                 innerNode.style.fill = colorString;
-             }
-             innerNode.style.color = colorString; 
-         } else if (el.type === 'custom') {
+         const strokeActive = isStrokeActive(el);
+         const strokeColorString = el.strokeColor ? el.strokeColor : colorString;
+         if (strokeActive) innerNode.style.stroke = strokeColorString;
+         else innerNode.style.stroke = 'none';
+
+         if (el.type === 'custom') {
              innerNode.style.color = colorString;
+         } else if (el.type !== 'group') {
+             const fillActive = isFillActive(el);
+             if (fillActive) {
+                 if (el.fillType !== 'gradient' || colorOverride) innerNode.style.fill = colorString;
+                 else innerNode.style.fill = '';
+                 innerNode.style.color = colorString;
+             } else {
+                 innerNode.style.fill = 'none';
+             }
          }
 
          // Handle Layer Animation (Direct DOM Manipulation)
@@ -280,15 +304,26 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
   // --- CRUD Operations ---
   const addElement = (type: ElementType) => {
     finishSpline();
+    const baseColor = '#3b82f6';
+    const isLine = type === 'line';
+    const isFreeform = type === 'freeform';
+    const isSplineType = type === 'spline';
+    const isPathLike = isLine || isFreeform || isSplineType;
+    const defaultFillEnabled = type === 'group' ? false : (!isLine && !isFreeform && !isSplineType);
+    const defaultStrokeEnabled = type === 'group' ? false : isPathLike;
     const newEl: VisualizerElement = {
       id: Math.random().toString(36).substring(2, 11),
       type,
       name: `${type.charAt(0).toUpperCase() + type.slice(1)}`,
       x: 0.5, y: 0.5,
-      width: 100, height: type === 'line' ? 4 : 100,
-      color: '#3b82f6', 
+      width: 100, height: isLine ? 4 : 100,
+      color: baseColor, 
       fillType: 'solid',
-      gradient: { start: '#3b82f6', end: '#3b82f6', angle: 90 },
+      gradient: { start: baseColor, end: baseColor, angle: 90 },
+      fillEnabled: defaultFillEnabled,
+      strokeEnabled: defaultStrokeEnabled,
+      strokeColor: baseColor,
+      strokeWidth: isLine ? 4 : 2,
       rotation: 0,
       opacity: 1,
       animationTracks: [],
@@ -321,6 +356,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
                     color: '#3b82f6',
                     fillType: 'solid',
                     gradient: { start: '#3b82f6', end: '#3b82f6', angle: 90 },
+                    fillEnabled: true,
+                    strokeEnabled: false,
+                    strokeColor: '#3b82f6',
+                    strokeWidth: 2,
                     rotation: 0,
                     opacity: 1,
                     animationTracks: [],
@@ -375,6 +414,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
         color: '#ffffff', 
         fillType: 'solid',
         gradient: { start: '#ffffff', end: '#ffffff', angle: 90 },
+        fillEnabled: false,
+        strokeEnabled: false,
+        strokeColor: '#ffffff',
+        strokeWidth: 2,
         rotation: 0, opacity: 1, animationTracks: [], children
     };
     pushHistory([...remainingEls, groupEl]);
@@ -635,6 +678,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
                 type: 'freeform', name: 'Freeform Line',
                 x: 0, y: 0, width: 100, height: 100, color: '#3b82f6', 
                 fillType: 'solid', gradient: { start: '#3b82f6', end: '#3b82f6', angle: 90 },
+                fillEnabled: false,
+                strokeEnabled: true,
+                strokeColor: '#3b82f6',
+                strokeWidth: 2,
                 rotation: 0, opacity: 1, animationTracks: [],
                 points: [{x: e.clientX - rect.left, y: e.clientY - rect.top}]
             };
@@ -652,16 +699,38 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
                      type: 'spline', name: 'Spline Curve',
                      x: 0, y: 0, width: 100, height: 100, color: '#3b82f6', 
                      fillType: 'solid', gradient: { start: '#3b82f6', end: '#3b82f6', angle: 90 },
-                     rotation: 0, opacity: 1, animationTracks: [],
+                     fillEnabled: false,
+                     strokeEnabled: true,
+                     strokeColor: '#3b82f6',
+                     strokeWidth: 2,
+                     rotation: 0, opacity: 1, animationTracks: [], isClosed: false,
                      points: [{x, y, handleIn: {x:0, y:0}, handleOut: {x:0, y:0}}]
                  };
                  activeSplineId.current = newEl.id;
                  setElements(prev => [...prev, newEl]);
                  setSelectedIds(new Set([newEl.id]));
              } else {
-                 setElements(prev => updateElementInList(prev, activeSplineId.current!, {
-                     points: [...(findElementById(activeSplineId.current!, prev)?.points || []), {x, y, handleIn: {x:0, y:0}, handleOut: {x:0, y:0}}]
-                 }));
+                 let closedBySnap = false;
+                 setElements(prev => {
+                     const el = findElementById(activeSplineId.current!, prev);
+                     if (!el) return prev;
+                     if (el.isClosed) { closedBySnap = true; return prev; }
+                     const existingPoints = el.points || [];
+                     if (existingPoints.length >= 2) {
+                         const first = existingPoints[0];
+                         const dist = Math.hypot(x - first.x, y - first.y);
+                         if (dist <= SPLINE_CLOSE_DISTANCE) {
+                             closedBySnap = true;
+                             return updateElementInList(prev, el.id, { isClosed: true });
+                         }
+                     }
+                     const newPoints = [...existingPoints, { x, y, handleIn: { x: 0, y: 0 }, handleOut: { x: 0, y: 0 } }];
+                     return updateElementInList(prev, el.id, { points: newPoints });
+                 });
+                 if (closedBySnap) {
+                     dragMode.current = null;
+                     return;
+                 }
              }
              dragMode.current = 'create-tangent';
              startPos.current = { x: e.clientX, y: e.clientY };
@@ -763,7 +832,13 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
              if (!el || !el.points) return prev;
              const newPoints = [...el.points];
              const p = newPoints[pointIndex];
-             if (type === 'anchor') newPoints[pointIndex] = { ...p, x: p.x + dx, y: p.y + dy };
+             let closedBySnap = false;
+             if (type === 'anchor') {
+                 newPoints[pointIndex] = { ...p, x: p.x + dx, y: p.y + dy };
+                 if (!el.isClosed) {
+                     closedBySnap = maybeSnapSplineEndpoints(newPoints, pointIndex);
+                 }
+             }
              else if (type === 'out') {
                  newPoints[pointIndex] = { ...p, handleOut: { x: (p.handleOut?.x||0) + dx, y: (p.handleOut?.y||0) + dy } };
                  if (!e.altKey) newPoints[pointIndex].handleIn = { x: -newPoints[pointIndex].handleOut!.x, y: -newPoints[pointIndex].handleOut!.y };
@@ -771,7 +846,9 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
                  newPoints[pointIndex] = { ...p, handleIn: { x: (p.handleIn?.x||0) + dx, y: (p.handleIn?.y||0) + dy } };
                  if (!e.altKey) newPoints[pointIndex].handleOut = { x: -newPoints[pointIndex].handleIn!.x, y: -newPoints[pointIndex].handleIn!.y };
              }
-             return updateElementInList(prev, elementId, { points: newPoints });
+             const update: Partial<VisualizerElement> = { points: newPoints };
+             if (closedBySnap) update.isClosed = true;
+             return updateElementInList(prev, elementId, update);
         });
         return;
     }

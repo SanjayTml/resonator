@@ -1,6 +1,6 @@
 import React, { RefObject } from 'react';
 import { VisualizerElement, DragMode, SelectionBox } from '../../types';
-import { getSplinePath } from './utils';
+import { getSplinePath, isFillActive, isStrokeActive, resolveStrokeColor, resolveStrokeWidth } from './utils';
 
 interface WorkspaceCanvasProps {
   svgRef: RefObject<SVGSVGElement | null>;
@@ -58,41 +58,48 @@ const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
       const yStr = `${el.y * 100}%`;
       const commonProps = { style: { transformOrigin: 'center', transformBox: 'fill-box' } as React.CSSProperties };
       
-      // Determine Fill
-      let fillProp: any = { fill: el.color };
+      const fillActive = isFillActive(el);
+      let fillProp: any = { fill: 'none' };
       let defs = null;
-      if (el.fillType === 'gradient' && el.gradient) {
-          const gradId = `grad_${el.id}`;
-          fillProp = { fill: `url(#${gradId})` };
-          defs = (
-              <defs>
-                  <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="0%" gradientTransform={`rotate(${el.gradient.angle || 0})`}>
-                      <stop offset="0%" stopColor={el.gradient.start} />
-                      <stop offset="100%" stopColor={el.gradient.end} />
-                  </linearGradient>
-              </defs>
-          );
+      if (fillActive) {
+          if (el.fillType === 'gradient' && el.gradient) {
+              const gradId = `grad_${el.id}`;
+              fillProp = { fill: `url(#${gradId})` };
+              defs = (
+                  <defs>
+                      <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="0%" gradientTransform={`rotate(${el.gradient.angle || 0})`}>
+                          <stop offset="0%" stopColor={el.gradient.start} />
+                          <stop offset="100%" stopColor={el.gradient.end} />
+                      </linearGradient>
+                  </defs>
+              );
+          } else {
+              fillProp = { fill: el.color };
+          }
       }
-      // For lines/strokes, apply to stroke
-      const strokeProp = (el.type === 'line' || el.type === 'freeform' || el.type === 'spline') ? { stroke: el.color } : {};
+
+      const strokeActive = isStrokeActive(el);
+      const strokeProp = strokeActive 
+          ? { stroke: resolveStrokeColor(el), strokeWidth: resolveStrokeWidth(el) }
+          : { stroke: 'none' };
 
       let shape;
       if (el.type === 'group') {
          shape = <g>{el.children?.map(renderShape)}</g>;
       } 
-      else if (el.type === 'circle') shape = <circle cx="0" cy="0" r={el.width / 2} {...fillProp} {...commonProps} />;
-      else if (el.type === 'rect' || el.type === 'bar') shape = <rect x={-el.width/2} y={-el.height/2} width={el.width} height={el.height} {...fillProp} {...commonProps} />;
-      else if (el.type === 'line') shape = <line x1={-el.width/2} y1="0" x2={el.width/2} y2="0" strokeWidth={el.height} stroke={el.color} {...commonProps} />;
-      else if (el.type === 'triangle') shape = <polygon points={`0,${-el.height/2} ${el.width/2},${el.height/2} ${-el.width/2},${el.height/2}`} {...fillProp} {...commonProps} />;
+      else if (el.type === 'circle') shape = <circle cx="0" cy="0" r={el.width / 2} {...fillProp} {...strokeProp} {...commonProps} />;
+      else if (el.type === 'rect' || el.type === 'bar') shape = <rect x={-el.width/2} y={-el.height/2} width={el.width} height={el.height} {...fillProp} {...strokeProp} {...commonProps} />;
+      else if (el.type === 'line') shape = <line x1={-el.width/2} y1="0" x2={el.width/2} y2="0" {...strokeProp} {...commonProps} />;
+      else if (el.type === 'triangle') shape = <polygon points={`0,${-el.height/2} ${el.width/2},${el.height/2} ${-el.width/2},${el.height/2}`} {...fillProp} {...strokeProp} {...commonProps} />;
       else if (el.type === 'freeform' && el.points) {
           const d = el.points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
-          shape = <path d={d} strokeWidth="2" fill="none" stroke={el.color} {...commonProps} strokeLinecap="round" strokeLinejoin="round" />;
+          shape = <path d={d} {...fillProp} {...strokeProp} {...commonProps} strokeLinecap="round" strokeLinejoin="round" />;
       }
       else if (el.type === 'spline' && el.points) {
-          const d = getSplinePath(el.points);
+          const d = getSplinePath(el.points, !!el.isClosed);
           shape = (
              <g>
-                 <path d={d} strokeWidth="2" fill="none" stroke={el.color} {...commonProps} strokeLinecap="round" strokeLinejoin="round" />
+                 <path d={d} {...fillProp} {...strokeProp} {...commonProps} strokeLinecap="round" strokeLinejoin="round" />
                  {renderSplineControls(el)}
              </g>
           );

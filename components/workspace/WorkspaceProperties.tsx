@@ -1,8 +1,8 @@
 
 import React from 'react';
-import { Activity, X, Group, ArrowRight } from 'lucide-react';
+import { Activity, X, Group, ArrowRight, ChevronDown } from 'lucide-react';
 import { VisualizerElement, AnimationTrack, AnimationDriver, AnimationTarget } from '../../types';
-import { hexToHSL, hslToHex, getPreviewColor } from './utils';
+import { hexToHSL, hslToHex, getPreviewColor, getDefaultFillEnabled, getDefaultStrokeEnabled } from './utils';
 import { findElementById } from './elementTree';
 
 interface WorkspacePropertiesProps {
@@ -50,6 +50,20 @@ const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({ selectedIds, 
   const el = findElementById(id, elements);
   if (!el) return null;
   const allElementsList = getAllElements(elements).filter(item => item.id !== id);
+  const supportsFill = el.type !== 'line';
+  const fillEnabled = el.fillEnabled ?? getDefaultFillEnabled(el.type);
+  const strokeEnabled = el.strokeEnabled ?? getDefaultStrokeEnabled(el.type);
+  const strokeColor = el.strokeColor || el.color;
+  const strokeWidthValue = el.type === 'line' ? el.height : (el.strokeWidth ?? 2);
+  const handleStrokeWidthChange = (value: number) => {
+      if (Number.isNaN(value)) return;
+      const clamped = Math.max(0, value);
+      if (el.type === 'line') {
+          onUpdate(id, { height: clamped, strokeWidth: clamped });
+      } else {
+          onUpdate(id, { strokeWidth: clamped });
+      }
+  };
 
   return (
     <div className="w-80 border-l border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col overflow-y-auto shrink-0 z-20 custom-scrollbar">
@@ -107,55 +121,96 @@ const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({ selectedIds, 
             {/* Appearance */}
             {el.type !== 'group' && (
                 <div className="mb-6">
-                    <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center justify-between mb-4">
                         <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100">Appearance</span>
-                        <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-lg p-0.5">
-                            <button 
-                                onClick={() => onUpdate(id, { fillType: 'solid' })}
-                                className={`px-2 py-1 text-[10px] font-bold rounded-md ${el.fillType === 'solid' ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-white' : 'text-zinc-400'}`}
-                            >Solid</button>
-                            <button 
-                                onClick={() => onUpdate(id, { fillType: 'gradient' })}
-                                className={`px-2 py-1 text-[10px] font-bold rounded-md ${el.fillType === 'gradient' ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-white' : 'text-zinc-400'}`}
-                            >Gradient</button>
-                        </div>
                     </div>
+                    <div className="flex flex-col gap-4">
+                        {supportsFill && (
+                            <details className="border border-zinc-100 dark:border-zinc-800 rounded-2xl p-3 bg-zinc-50/50 dark:bg-zinc-800/40" open>
+                                <summary className="flex items-center justify-between cursor-pointer select-none [&::-webkit-details-marker]:hidden">
+                                    <div className="flex items-center gap-2 text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                                        <ChevronDown size={14} className="text-zinc-400 dark:text-zinc-500" />
+                                        <span>Fill</span>
+                                    </div>
+                                    <label onClick={(e) => e.stopPropagation()} className="flex items-center gap-2 text-[10px] font-bold text-zinc-500">
+                                        <input type="checkbox" checked={fillEnabled} onChange={(e) => onUpdate(id, { fillEnabled: e.target.checked })} className="accent-zinc-900 dark:accent-zinc-100" />
+                                        <span>{fillEnabled ? 'Enabled' : 'Disabled'}</span>
+                                    </label>
+                                </summary>
+                                <div className={`mt-3 space-y-3 ${fillEnabled ? '' : 'opacity-50 pointer-events-none'}`}>
+                                    <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-lg p-0.5">
+                                        <button 
+                                            onClick={() => onUpdate(id, { fillType: 'solid' })}
+                                            className={`px-2 py-1 text-[10px] font-bold rounded-md ${el.fillType === 'solid' ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-white' : 'text-zinc-400'}`}
+                                        >Solid</button>
+                                        <button 
+                                            onClick={() => onUpdate(id, { fillType: 'gradient' })}
+                                            className={`px-2 py-1 text-[10px] font-bold rounded-md ${el.fillType === 'gradient' ? 'bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-white' : 'text-zinc-400'}`}
+                                        >Gradient</button>
+                                    </div>
 
-                    {el.fillType === 'gradient' ? (
-                        <div className="flex flex-col gap-3">
-                             {/* Start Color */}
-                            <div className="flex items-center gap-3">
-                                <span className="text-[10px] font-bold text-zinc-400 w-8">Start</span>
-                                <div className="w-8 h-8 rounded-full border border-zinc-200 dark:border-zinc-700 shadow-inner overflow-hidden relative shrink-0">
-                                    <input type="color" className="absolute -top-2 -left-2 w-12 h-12 cursor-pointer" value={el.gradient?.start || el.color} onChange={(e) => onUpdate(id, { gradient: { ...(el.gradient || { end: el.color, angle: 90 }), start: e.target.value } })} />
+                                    {el.fillType === 'gradient' ? (
+                                        <div className="flex flex-col gap-3">
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-[10px] font-bold text-zinc-400 w-8">Start</span>
+                                                <div className="w-8 h-8 rounded-full border border-zinc-200 dark:border-zinc-700 shadow-inner overflow-hidden relative shrink-0">
+                                                    <input type="color" className="absolute -top-2 -left-2 w-12 h-12 cursor-pointer" value={el.gradient?.start || el.color} onChange={(e) => onUpdate(id, { gradient: { ...(el.gradient || { end: el.color, angle: 90 }), start: e.target.value } })} />
+                                                </div>
+                                                <input type="text" className="flex-1 bg-zinc-50 dark:bg-zinc-800 rounded-lg px-3 py-2 text-xs border border-zinc-200 dark:border-zinc-700 font-mono uppercase" value={el.gradient?.start || el.color} onChange={(e) => onUpdate(id, { gradient: { ...(el.gradient || { end: el.color, angle: 90 }), start: e.target.value } })} />
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-[10px] font-bold text-zinc-400 w-8">End</span>
+                                                <div className="w-8 h-8 rounded-full border border-zinc-200 dark:border-zinc-700 shadow-inner overflow-hidden relative shrink-0">
+                                                    <input type="color" className="absolute -top-2 -left-2 w-12 h-12 cursor-pointer" value={el.gradient?.end || el.color} onChange={(e) => onUpdate(id, { gradient: { ...(el.gradient || { start: el.color, angle: 90 }), end: e.target.value } })} />
+                                                </div>
+                                                <input type="text" className="flex-1 bg-zinc-50 dark:bg-zinc-800 rounded-lg px-3 py-2 text-xs border border-zinc-200 dark:border-zinc-700 font-mono uppercase" value={el.gradient?.end || el.color} onChange={(e) => onUpdate(id, { gradient: { ...(el.gradient || { start: el.color, angle: 90 }), end: e.target.value } })} />
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[10px] font-bold text-zinc-400 w-8">Angle</span>
+                                                <input type="range" min="0" max="360" className="flex-1 h-1 bg-zinc-200 dark:bg-zinc-700 rounded-full appearance-none accent-zinc-900 dark:accent-zinc-100" value={el.gradient?.angle || 90} onChange={(e) => onUpdate(id, { gradient: { ...(el.gradient || { start: el.color, end: el.color }), angle: parseInt(e.target.value) } })} />
+                                                <span className="text-[10px] text-zinc-500 w-8 text-right">{el.gradient?.angle || 90}°</span>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-full border border-zinc-200 dark:border-zinc-700 shadow-inner overflow-hidden relative shrink-0">
+                                                <input type="color" className="absolute -top-2 -left-2 w-16 h-16 cursor-pointer" value={el.color} onChange={(e) => onUpdate(id, { color: e.target.value })} />
+                                            </div>
+                                            <input type="text" className="flex-1 bg-zinc-50 dark:bg-zinc-800 rounded-lg px-3 py-2 text-xs border border-zinc-200 dark:border-zinc-700 font-mono uppercase" value={el.color} onChange={(e) => onUpdate(id, { color: e.target.value })} />
+                                        </div>
+                                    )}
                                 </div>
-                                <input type="text" className="flex-1 bg-zinc-50 dark:bg-zinc-800 rounded-lg px-3 py-2 text-xs border border-zinc-200 dark:border-zinc-700 font-mono uppercase" value={el.gradient?.start || el.color} onChange={(e) => onUpdate(id, { gradient: { ...(el.gradient || { end: el.color, angle: 90 }), start: e.target.value } })} />
-                            </div>
-                            
-                            {/* End Color */}
-                            <div className="flex items-center gap-3">
-                                <span className="text-[10px] font-bold text-zinc-400 w-8">End</span>
-                                <div className="w-8 h-8 rounded-full border border-zinc-200 dark:border-zinc-700 shadow-inner overflow-hidden relative shrink-0">
-                                    <input type="color" className="absolute -top-2 -left-2 w-12 h-12 cursor-pointer" value={el.gradient?.end || el.color} onChange={(e) => onUpdate(id, { gradient: { ...(el.gradient || { start: el.color, angle: 90 }), end: e.target.value } })} />
-                                </div>
-                                <input type="text" className="flex-1 bg-zinc-50 dark:bg-zinc-800 rounded-lg px-3 py-2 text-xs border border-zinc-200 dark:border-zinc-700 font-mono uppercase" value={el.gradient?.end || el.color} onChange={(e) => onUpdate(id, { gradient: { ...(el.gradient || { start: el.color, angle: 90 }), end: e.target.value } })} />
-                            </div>
+                            </details>
+                        )}
 
-                            {/* Angle */}
-                            <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-bold text-zinc-400 w-8">Angle</span>
-                                <input type="range" min="0" max="360" className="flex-1 h-1 bg-zinc-200 dark:bg-zinc-700 rounded-full appearance-none accent-zinc-900 dark:accent-zinc-100" value={el.gradient?.angle || 90} onChange={(e) => onUpdate(id, { gradient: { ...(el.gradient || { start: el.color, end: el.color }), angle: parseInt(e.target.value) } })} />
-                                <span className="text-[10px] text-zinc-500 w-8 text-right">{el.gradient?.angle || 90}°</span>
+                        <details className="border border-zinc-100 dark:border-zinc-800 rounded-2xl p-3 bg-zinc-50/50 dark:bg-zinc-800/40" open>
+                            <summary className="flex items-center justify-between cursor-pointer select-none [&::-webkit-details-marker]:hidden">
+                                <div className="flex items-center gap-2 text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                                    <ChevronDown size={14} className="text-zinc-400 dark:text-zinc-500" />
+                                    <span>Outline</span>
+                                </div>
+                                <label onClick={(e) => e.stopPropagation()} className="flex items-center gap-2 text-[10px] font-bold text-zinc-500">
+                                    <input type="checkbox" checked={strokeEnabled} onChange={(e) => onUpdate(id, { strokeEnabled: e.target.checked })} className="accent-zinc-900 dark:accent-zinc-100" />
+                                    <span>{strokeEnabled ? 'Enabled' : 'Disabled'}</span>
+                                </label>
+                            </summary>
+                            <div className={`mt-3 space-y-3 ${strokeEnabled ? '' : 'opacity-50 pointer-events-none'}`}>
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full border border-zinc-200 dark:border-zinc-700 shadow-inner overflow-hidden relative shrink-0">
+                                        <input type="color" className="absolute -top-2 -left-2 w-16 h-16 cursor-pointer" value={strokeColor} onChange={(e) => onUpdate(id, { strokeColor: e.target.value })} />
+                                    </div>
+                                    <input type="text" className="flex-1 bg-zinc-50 dark:bg-zinc-800 rounded-lg px-3 py-2 text-xs border border-zinc-200 dark:border-zinc-700 font-mono uppercase" value={strokeColor} onChange={(e) => onUpdate(id, { strokeColor: e.target.value })} />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-[10px] text-zinc-400 font-bold uppercase">Width</label>
+                                    <div className="flex items-center gap-2">
+                                        <input type="range" min="0" max="40" step="0.5" className="flex-1 h-1 bg-zinc-200 dark:bg-zinc-700 rounded-full appearance-none accent-zinc-900 dark:accent-zinc-100" value={Number(strokeWidthValue.toFixed(1))} onChange={(e) => handleStrokeWidthChange(parseFloat(e.target.value))} />
+                                        <input type="number" min="0" step="0.5" className="w-14 bg-zinc-50 dark:bg-zinc-800 rounded-lg px-2 py-1 text-[10px] border border-zinc-200 dark:border-zinc-700" value={strokeWidthValue.toFixed(1)} onChange={(e) => handleStrokeWidthChange(parseFloat(e.target.value))} />
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full border border-zinc-200 dark:border-zinc-700 shadow-inner overflow-hidden relative shrink-0">
-                                <input type="color" className="absolute -top-2 -left-2 w-16 h-16 cursor-pointer" value={el.color} onChange={(e) => onUpdate(id, { color: e.target.value })} />
-                            </div>
-                            <input type="text" className="flex-1 bg-zinc-50 dark:bg-zinc-800 rounded-lg px-3 py-2 text-xs border border-zinc-200 dark:border-zinc-700 font-mono uppercase" value={el.color} onChange={(e) => onUpdate(id, { color: e.target.value })} />
-                        </div>
-                    )}
+                        </details>
+                    </div>
                 </div>
             )}
 

@@ -87,25 +87,53 @@ export const getPreviewColor = (baseHex: string, target: AnimationTarget, value:
   return `hsl(${finalH}, ${finalS}%, ${finalL}%)`;
 };
 
+export const getDefaultFillEnabled = (type: VisualizerElement['type']) => {
+    if (type === 'line' || type === 'freeform' || type === 'spline') return false;
+    return true;
+};
+
+export const getDefaultStrokeEnabled = (type: VisualizerElement['type']) => {
+    if (type === 'line' || type === 'freeform' || type === 'spline') return true;
+    return false;
+};
+
+export const isFillActive = (el: VisualizerElement) => {
+    const enabled = el.fillEnabled ?? getDefaultFillEnabled(el.type);
+    if (el.type === 'spline') return enabled && !!el.isClosed;
+    return enabled;
+};
+
+export const isStrokeActive = (el: VisualizerElement) => el.strokeEnabled ?? getDefaultStrokeEnabled(el.type);
+
+export const resolveStrokeColor = (el: VisualizerElement) => el.strokeColor || el.color;
+
+export const resolveStrokeWidth = (el: VisualizerElement) => {
+    if (el.type === 'line') return el.height;
+    return el.strokeWidth ?? 2;
+};
+
 // Helper: Generate Cubic Bezier Spline Path
-export const getSplinePath = (points: VisualizerElement['points']) => {
+export const getSplinePath = (points: VisualizerElement['points'], isClosed = false) => {
   if (!points || points.length === 0) return "";
   const start = points[0];
   let d = `M ${start.x} ${start.y}`;
 
+  type SplinePoint = NonNullable<VisualizerElement['points']>[number];
+  const appendCurve = (from: SplinePoint, to: SplinePoint) => {
+    const cp1x = from.x + (from.handleOut?.x || 0);
+    const cp1y = from.y + (from.handleOut?.y || 0);
+    const cp2x = to.x + (to.handleIn?.x || 0);
+    const cp2y = to.y + (to.handleIn?.y || 0);
+    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${to.x} ${to.y}`;
+  };
+
   for (let i = 0; i < points.length - 1; i++) {
-    const p0 = points[i];
-    const p1 = points[i + 1];
+    appendCurve(points[i], points[i + 1]);
+  }
 
-    // Control point 1: p0 + p0.handleOut
-    const cp1x = p0.x + (p0.handleOut?.x || 0);
-    const cp1y = p0.y + (p0.handleOut?.y || 0);
-
-    // Control point 2: p1 + p1.handleIn
-    const cp2x = p1.x + (p1.handleIn?.x || 0);
-    const cp2y = p1.y + (p1.handleIn?.y || 0);
-
-    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p1.x} ${p1.y}`;
+  if (isClosed && points.length > 1) {
+    appendCurve(points[points.length - 1], points[0]);
+    d += ' Z';
   }
   
   return d;
@@ -232,6 +260,17 @@ const getElementPathData = (el: VisualizerElement, originX: number, originY: num
 
                 d += ` C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${rotP1.x} ${rotP1.y}`;
             }
+            if (el.isClosed && el.points.length > 1) {
+                const last = el.points[el.points.length - 1];
+                const first = el.points[0];
+                const rotLast = transformPoint(last);
+                const rotFirst = transformPoint(first);
+                const lastHandle = rotatePoint(last.handleOut || { x: 0, y: 0 }, angle);
+                const firstHandle = rotatePoint(first.handleIn || { x: 0, y: 0 }, angle);
+                const cp1 = { x: rotLast.x + lastHandle.x, y: rotLast.y + lastHandle.y };
+                const cp2 = { x: rotFirst.x + firstHandle.x, y: rotFirst.y + firstHandle.y };
+                d += ` C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${rotFirst.x} ${rotFirst.y} Z`;
+            }
         }
         return d;
     }
@@ -287,6 +326,10 @@ export const generateMergedElement = (elements: VisualizerElement[], svgW: numbe
         color: topElement.color,
         fillType: topElement.fillType || 'solid',
         gradient: topElement.gradient || { start: topElement.color, end: topElement.color, angle: 90 },
+        fillEnabled: topElement.fillEnabled ?? getDefaultFillEnabled(topElement.type),
+        strokeEnabled: topElement.strokeEnabled ?? getDefaultStrokeEnabled(topElement.type),
+        strokeColor: topElement.strokeColor || topElement.color,
+        strokeWidth: topElement.strokeWidth ?? (topElement.type === 'line' ? topElement.height : 2),
         rotation: 0,
         opacity: 1,
         animationTracks: [], 
@@ -362,6 +405,10 @@ export const generateSubtractedElement = (elements: VisualizerElement[], svgW: n
         color: baseElement.color,
         fillType: baseElement.fillType || 'solid',
         gradient: baseElement.gradient || { start: baseElement.color, end: baseElement.color, angle: 90 },
+        fillEnabled: baseElement.fillEnabled ?? getDefaultFillEnabled(baseElement.type),
+        strokeEnabled: baseElement.strokeEnabled ?? getDefaultStrokeEnabled(baseElement.type),
+        strokeColor: baseElement.strokeColor || baseElement.color,
+        strokeWidth: baseElement.strokeWidth ?? (baseElement.type === 'line' ? baseElement.height : 2),
         rotation: 0,
         opacity: 1,
         animationTracks: [], 
