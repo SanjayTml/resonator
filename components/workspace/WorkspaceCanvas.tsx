@@ -353,6 +353,19 @@ const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
           />
         </svg>
       );
+    } else if (el.type === "image" && el.imageSrc) {
+      shape = (
+        <image
+          data-shape-root
+          href={el.imageSrc}
+          x={-el.width / 2}
+          y={-el.height / 2}
+          width={el.width}
+          height={el.height}
+          preserveAspectRatio="none"
+          {...commonProps}
+        />
+      );
     }
 
     const isInnerSelected = innerSelectionId === el.id;

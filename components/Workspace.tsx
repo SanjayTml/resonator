@@ -88,6 +88,228 @@ const getGridSpacing = (variant: GridVariant): number => {
   return 24;
 };
 
+const MAX_ASSET_SIZE_BYTES = 20 * 1024 * 1024; // 20MB client-side guard
+const SUPPORTED_IMAGE_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/webp",
+  "image/gif",
+  "image/svg+xml",
+]);
+const SUPPORTED_IMAGE_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "svg",
+]);
+
+const isSvgFile = (file: File) =>
+  file.type === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg");
+
+const hasSupportedExtension = (file: File) => {
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  return SUPPORTED_IMAGE_EXTENSIONS.has(ext);
+};
+
+const isSupportedAsset = (file: File) => {
+  if (SUPPORTED_IMAGE_TYPES.has(file.type)) return true;
+  if (file.type.startsWith("image/")) return true;
+  return hasSupportedExtension(file);
+};
+
+const sanitizeSvgMarkup = (
+  raw: string
+): { inner: string; viewBox: string } | null => {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(raw, "image/svg+xml");
+  if (doc.querySelector("parsererror")) return null;
+  const svgEl = doc.querySelector("svg");
+  if (!svgEl) return null;
+  const disallowedTags = new Set([
+    "script",
+    "foreignobject",
+    "iframe",
+    "object",
+    "embed",
+    "audio",
+    "video",
+    "canvas",
+    "link",
+    "style",
+  ]);
+  const sanitizeElement = (el: Element) => {
+    if (disallowedTags.has(el.tagName.toLowerCase())) {
+      el.parentNode?.removeChild(el);
+      return;
+    }
+    Array.from(el.attributes).forEach((attr) => {
+      const name = attr.name.toLowerCase();
+      const value = attr.value.trim();
+      if (name.startsWith("on")) {
+        el.removeAttribute(attr.name);
+        return;
+      }
+      if (
+        (name === "href" || name === "xlink:href") &&
+        /^(javascript:|data:text\/html)/i.test(value)
+      ) {
+        el.removeAttribute(attr.name);
+        return;
+      }
+      if (name === "style") {
+        el.removeAttribute(attr.name);
+      }
+    });
+    Array.from(el.childNodes).forEach((child) => {
+      if (child.nodeType === Node.COMMENT_NODE) {
+        child.parentNode?.removeChild(child);
+      } else if (child.nodeType === Node.ELEMENT_NODE) {
+        sanitizeElement(child as Element);
+      }
+    });
+  };
+  sanitizeElement(svgEl);
+  const viewBox =
+    svgEl.getAttribute("viewBox") ||
+    `0 0 ${svgEl.getAttribute("width") || "100"} ${
+      svgEl.getAttribute("height") || "100"
+    }`;
+  return { inner: svgEl.innerHTML, viewBox };
+};
+
+const readFileAsText = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => {
+      const text = reader.result;
+      if (typeof text === "string") resolve(text);
+      else reject(new Error("Unable to read file as text"));
+    };
+    reader.readAsText(file);
+  });
+
+const readFileAsDataUrl = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => {
+      const text = reader.result;
+      if (typeof text === "string") resolve(text);
+      else reject(new Error("Unable to read file as data URL"));
+    };
+    reader.readAsDataURL(file);
+  });
+
+const getImageDimensions = (src: string): Promise<{ width: number; height: number }> =>
+  new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    img.onerror = () => reject(new Error("Unable to read image dimensions"));
+    img.src = src;
+  });
+
+const clampAssetDimensions = (width?: number, height?: number) => {
+  const fallback = 200;
+  const safeWidth = width && width > 0 ? width : fallback;
+  const safeHeight = height && height > 0 ? height : fallback;
+  const maxDimension = 360;
+  const largest = Math.max(safeWidth, safeHeight);
+  const scale = largest > maxDimension ? maxDimension / largest : 1;
+  return {
+    width: Math.round(safeWidth * scale),
+    height: Math.round(safeHeight * scale),
+  };
+};
+
+const computeResizeWithAspect = (
+  mode: DragMode,
+  start: VisualizerElement,
+  dx: number,
+  dy: number,
+  svgRect: DOMRect,
+  preserveAspect: boolean
+): Partial<VisualizerElement> | null => {
+  if (!mode || !mode.startsWith("resize")) return null;
+  const moveLeft = mode === "resize-bl" || mode === "resize-tl";
+  const moveRight = mode === "resize-br" || mode === "resize-tr";
+  const moveTop = mode === "resize-tl" || mode === "resize-tr";
+  const moveBottom = mode === "resize-bl" || mode === "resize-br";
+
+  const centerX = start.x * svgRect.width;
+  const centerY = start.y * svgRect.height;
+  let left = centerX - start.width / 2;
+  let right = centerX + start.width / 2;
+  let top = centerY - start.height / 2;
+  let bottom = centerY + start.height / 2;
+
+  if (moveLeft) left += dx;
+  if (moveRight) right += dx;
+  if (moveTop) top += dy;
+  if (moveBottom) bottom += dy;
+
+  const enforceMinSize = () => {
+    const minSize = 10;
+    if (right - left < minSize) {
+      if (moveLeft && !moveRight) left = right - minSize;
+      else if (moveRight && !moveLeft) right = left + minSize;
+      else {
+        const mid = (left + right) / 2;
+        left = mid - minSize / 2;
+        right = mid + minSize / 2;
+      }
+    }
+    if (bottom - top < minSize) {
+      if (moveTop && !moveBottom) top = bottom - minSize;
+      else if (moveBottom && !moveTop) bottom = top + minSize;
+      else {
+        const mid = (top + bottom) / 2;
+        top = mid - minSize / 2;
+        bottom = mid + minSize / 2;
+      }
+    }
+  };
+
+  enforceMinSize();
+
+  if (preserveAspect) {
+    let aspect = start.width !== 0 ? start.height / start.width : 1;
+    if (!Number.isFinite(aspect) || aspect <= 0) aspect = 1;
+    const width = right - left;
+    const height = bottom - top;
+    const widthDelta = width - start.width;
+    const heightDelta = height - start.height;
+    const lockWidth = Math.abs(widthDelta) >= Math.abs(heightDelta);
+    if (lockWidth) {
+      const targetHeight = Math.max(10, width * aspect);
+      if (moveTop && !moveBottom) top = bottom - targetHeight;
+      else bottom = top + targetHeight;
+    } else {
+      const base = aspect === 0 ? width : height / aspect;
+      const targetWidth = Math.max(10, base);
+      if (moveLeft && !moveRight) left = right - targetWidth;
+      else right = left + targetWidth;
+    }
+    enforceMinSize();
+  }
+
+  const finalWidth = Math.max(10, right - left);
+  const finalHeight = Math.max(10, bottom - top);
+  const centerNormX = (left + right) / 2 / svgRect.width;
+  const centerNormY = (top + bottom) / 2 / svgRect.height;
+
+  return {
+    x: centerNormX,
+    y: centerNormY,
+    width: finalWidth,
+    height: finalHeight,
+  };
+};
+
+
 interface SnapComputationParams {
   dx: number;
   dy: number;
@@ -737,31 +959,38 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
     setSelectedIds(new Set([newEl.id]));
   };
 
-  const handleSVGUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const text = reader.result;
-      if (typeof text === "string") {
-        try {
-          const parser = new DOMParser();
-          const doc = parser.parseFromString(text, "image/svg+xml");
-          const svgEl = doc.querySelector("svg");
-          if (!svgEl) {
-            alert("Invalid SVG file");
-            return;
+  const importAssetFiles = async (files: FileList | File[] | null) => {
+    if (!files || files.length === 0) return;
+    const list = Array.isArray(files)
+      ? files
+      : Array.from(files as FileList);
+    const additions: VisualizerElement[] = [];
+    for (const file of list) {
+      if (!isSupportedAsset(file)) {
+        console.warn(`${file.name} is not a supported image or SVG.`);
+        continue;
+      }
+      if (file.size > MAX_ASSET_SIZE_BYTES) {
+        alert(`${file.name} is too large. Max file size is 20MB.`);
+        continue;
+      }
+      const baseName = file.name.replace(/\.[^/.]+$/, "") || "Asset";
+      try {
+        if (isSvgFile(file)) {
+          const text = await readFileAsText(file);
+          const sanitized = sanitizeSvgMarkup(text);
+          if (!sanitized) {
+            alert(`${file.name} is not a valid SVG.`);
+            continue;
           }
-          const viewBox = svgEl.getAttribute("viewBox") || "0 0 100 100";
-          const innerContent = svgEl.innerHTML;
           const newEl: VisualizerElement = {
             id: Math.random().toString(36).substring(2, 11),
             type: "custom",
-            name: file.name.replace(".svg", ""),
+            name: baseName,
             x: 0.5,
             y: 0.5,
-            width: 100,
-            height: 100,
+            width: 120,
+            height: 120,
             color: "#3b82f6",
             fillType: "solid",
             gradient: { start: "#3b82f6", end: "#3b82f6", angle: 90 },
@@ -772,18 +1001,65 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
             rotation: 0,
             opacity: 1,
             animationTracks: [],
-            svgContent: innerContent,
-            viewBox,
+            svgContent: sanitized.inner,
+            viewBox: sanitized.viewBox,
+            originalFileName: file.name,
+            mimeType: file.type || "image/svg+xml",
           };
-          pushHistory([...elements, newEl]);
-          setSelectedIds(new Set([newEl.id]));
-        } catch (err) {
-          console.error("Failed to parse SVG", err);
+          additions.push(newEl);
+        } else {
+          const dataUrl = await readFileAsDataUrl(file);
+          if (!dataUrl.startsWith("data:image")) {
+            console.warn(`Skipping unsupported data URL for ${file.name}`);
+            continue;
+          }
+          const dims = await getImageDimensions(dataUrl);
+          const { width, height } = clampAssetDimensions(
+            dims.width,
+            dims.height
+          );
+          const newEl: VisualizerElement = {
+            id: Math.random().toString(36).substring(2, 11),
+            type: "image",
+            name: baseName,
+            x: 0.5,
+            y: 0.5,
+            width,
+            height,
+            color: "#ffffff",
+            fillType: "solid",
+            gradient: { start: "#ffffff", end: "#ffffff", angle: 0 },
+            fillEnabled: false,
+            strokeEnabled: false,
+            strokeWidth: 0,
+            rotation: 0,
+            opacity: 1,
+            animationTracks: [],
+            imageSrc: dataUrl,
+            mimeType: file.type || undefined,
+            originalFileName: file.name,
+            intrinsicWidth: dims.width,
+            intrinsicHeight: dims.height,
+          };
+          additions.push(newEl);
         }
+      } catch (error) {
+        console.error(`Failed to import ${file.name}`, error);
       }
-    };
-    reader.readAsText(file);
+    }
+    if (additions.length === 0) return;
+    const newElements = [...elements, ...additions];
+    pushHistory(newElements);
+    setSelectedIds(new Set([additions[additions.length - 1].id]));
+  };
+
+  const handleAssetUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    await importAssetFiles(e.target.files);
     e.target.value = "";
+  };
+
+  const handleAssetDrop = async (files: FileList) => {
+    await importAssetFiles(files);
   };
 
   const deleteSelected = () => {
@@ -1652,32 +1928,17 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
           y: start.y + appliedDy / svgRect.height,
         }));
       } else if (selectedIds.size === 1) {
-        let updates = {};
-        if (dragMode.current === "resize-br")
-          updates = {
-            width: Math.max(10, start.width + dx),
-            height: Math.max(10, start.height + dy),
-          };
-        else if (dragMode.current === "resize-bl")
-          updates = {
-            x: start.x + dx / svgRect.width,
-            width: Math.max(10, start.width - dx),
-            height: Math.max(10, start.height + dy),
-          };
-        else if (dragMode.current === "resize-tr")
-          updates = {
-            y: start.y + dy / svgRect.height,
-            width: Math.max(10, start.width + dx),
-            height: Math.max(10, start.height - dy),
-          };
-        else if (dragMode.current === "resize-tl")
-          updates = {
-            x: start.x + dx / svgRect.width,
-            y: start.y + dy / svgRect.height,
-            width: Math.max(10, start.width - dx),
-            height: Math.max(10, start.height - dy),
-          };
-        newElements = updateTree(newElements, id, () => updates);
+        const updates = computeResizeWithAspect(
+          dragMode.current,
+          start,
+          dx,
+          dy,
+          svgRect,
+          e.shiftKey
+        );
+        if (updates) {
+          newElements = updateTree(newElements, id, () => updates);
+        }
       }
     });
     const applied =
@@ -1892,7 +2153,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
           onUnion={handleMerge}
           onSubtract={handleSubtract}
           addElement={addElement}
-          onSVGUpload={handleSVGUpload}
+          onAssetUpload={handleAssetUpload}
           selectedSplineId={
             selectedIds.size === 1 &&
             findElementById(Array.from(selectedIds)[0] as string, elements)
@@ -1929,6 +2190,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
             onTabShare={handleTabShare}
             graphEnabled={graphEnabled}
             setGraphEnabled={setGraphEnabled}
+            onAssetDrop={handleAssetDrop}
           />
 
           {/* Center Area: Canvas + Footer */}

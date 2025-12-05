@@ -45,7 +45,7 @@ interface WorkspaceHeaderProps {
   onUnion: () => void;
   onSubtract: () => void;
   addElement: (type: ElementType) => void;
-  onSVGUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onAssetUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   selectedSplineId?: string;
   resumeSplineEditing: () => void;
   removeLastSplinePoint: () => void;
@@ -74,7 +74,7 @@ const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
   onUnion,
   onSubtract,
   addElement,
-  onSVGUpload,
+  onAssetUpload,
   selectedSplineId,
   resumeSplineEditing,
   removeLastSplinePoint,
@@ -328,14 +328,14 @@ const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
                         flex items-center gap-3 w-full text-left p-2.5 text-xs hover:bg-zinc-50 dark:hover:bg-zinc-700 rounded-lg text-zinc-600 dark:text-zinc-300
                       "
               >
-                <ImageIcon size={14} /> Upload SVG
+                <ImageIcon size={14} /> Upload Asset
               </button>
               <input
                 ref={svgUploadRef}
                 type="file"
-                accept=".svg"
+                accept=".svg,image/svg+xml,image/png,image/jpeg,image/webp,image/gif"
                 className="hidden"
-                onChange={onSVGUpload}
+                onChange={onAssetUpload}
               />
             </div>
           </div>

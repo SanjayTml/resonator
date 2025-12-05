@@ -97,12 +97,19 @@ export const interpolateColor = (
 
 // Helper: Get Preview Color
 export const getDefaultFillEnabled = (type: VisualizerElement["type"]) => {
-  if (type === "line" || type === "freeform" || type === "spline") return false;
+  if (
+    type === "line" ||
+    type === "freeform" ||
+    type === "spline" ||
+    type === "image"
+  )
+    return false;
   return true;
 };
 
 export const getDefaultStrokeEnabled = (type: VisualizerElement["type"]) => {
   if (type === "line" || type === "freeform" || type === "spline") return true;
+  if (type === "image") return false;
   return false;
 };
 

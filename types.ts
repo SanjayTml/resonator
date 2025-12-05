@@ -35,7 +35,17 @@ export interface AppState {
 }
 
 // Workspace Specific Types
-export type ElementType = 'circle' | 'rect' | 'bar' | 'triangle' | 'line' | 'group' | 'custom' | 'freeform' | 'spline';
+export type ElementType =
+  | 'circle'
+  | 'rect'
+  | 'bar'
+  | 'triangle'
+  | 'line'
+  | 'group'
+  | 'custom'
+  | 'image'
+  | 'freeform'
+  | 'spline';
 export type FrequencyRange = 'bass' | 'mid' | 'high';
 export type Alignment = 'top' | 'middle' | 'bottom' | 'left' | 'center' | 'right';
 export type GridVariant = 'straight' | 'diagonal' | 'dots';
@@ -95,6 +105,12 @@ export interface VisualizerElement {
   // Custom SVG properties
   svgContent?: string;
   viewBox?: string;
+  // Image properties
+  imageSrc?: string;
+  mimeType?: string;
+  originalFileName?: string;
+  intrinsicWidth?: number;
+  intrinsicHeight?: number;
   // Freeform / Spline properties
   points?: {
     x: number; 

@@ -65,7 +65,8 @@ const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({
   const id = Array.from(effectiveSelection)[0] as string;
   const el = findElementById(id, elements);
   if (!el) return null;
-  const supportsFill = el.type !== "line";
+  const supportsFill = el.type !== "line" && el.type !== "image";
+  const supportsOutline = el.type !== "image";
 
   return (
     <div className="w-80 border-l border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col overflow-y-auto shrink-0 z-20 custom-scrollbar">
@@ -86,7 +87,9 @@ const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({
               <FillSection id={id} element={el} onUpdate={onUpdate} />
             )}
 
-            <OutlineSection id={id} element={el} onUpdate={onUpdate} />
+            {supportsOutline && (
+              <OutlineSection id={id} element={el} onUpdate={onUpdate} />
+            )}
           </div>
         )}
 

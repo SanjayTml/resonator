@@ -45,6 +45,7 @@ interface WorkspaceLayersProps {
   onTabShare: () => void | Promise<void>;
   graphEnabled: boolean;
   setGraphEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  onAssetDrop?: (files: FileList) => void | Promise<void>;
 }
 
 const WorkspaceLayers: React.FC<WorkspaceLayersProps> = ({
@@ -65,6 +66,7 @@ const WorkspaceLayers: React.FC<WorkspaceLayersProps> = ({
   onTabShare,
   graphEnabled,
   setGraphEnabled,
+  onAssetDrop,
 }) => {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -73,6 +75,8 @@ const WorkspaceLayers: React.FC<WorkspaceLayersProps> = ({
     position: "above" | "below";
   } | null>(null);
   const fileImportRef = useRef<HTMLInputElement>(null);
+  const fileDragDepth = useRef(0);
+  const [isFileDragActive, setIsFileDragActive] = useState(false);
 
   useEffect(() => {
     if (!innerSelectionId) return;
@@ -114,8 +118,46 @@ const WorkspaceLayers: React.FC<WorkspaceLayersProps> = ({
         return <MousePointer2 size={14} />;
       case "custom":
         return <ImageIcon size={14} />;
+      case "image":
+        return <ImageIcon size={14} />;
       default:
         return <Circle size={14} />;
+    }
+  };
+
+  const hasFilePayload = (dt?: DataTransfer | null) => {
+    if (!dt?.types) return false;
+    return Array.from(dt.types).includes("Files");
+  };
+
+  const handlePanelDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!hasFilePayload(e.dataTransfer)) return;
+    e.preventDefault();
+    fileDragDepth.current += 1;
+    setIsFileDragActive(true);
+  };
+
+  const handlePanelDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!hasFilePayload(e.dataTransfer)) return;
+    fileDragDepth.current = Math.max(fileDragDepth.current - 1, 0);
+    if (fileDragDepth.current === 0) setIsFileDragActive(false);
+  };
+
+  const handlePanelDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!hasFilePayload(e.dataTransfer)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    if (!isFileDragActive) setIsFileDragActive(true);
+  };
+
+  const handlePanelDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    if (!hasFilePayload(e.dataTransfer)) return;
+    e.preventDefault();
+    setIsFileDragActive(false);
+    fileDragDepth.current = 0;
+    if (onAssetDrop) {
+      const files = e.dataTransfer.files;
+      if (files && files.length) await onAssetDrop(files);
     }
   };
 
@@ -268,7 +310,23 @@ const WorkspaceLayers: React.FC<WorkspaceLayersProps> = ({
   };
 
   return (
-    <div className="w-64 border-r border-zinc-100 dark:border-zinc-800 flex flex-col shrink-0 z-20 bg-white dark:bg-zinc-900">
+    <div
+      className="w-64 border-r border-zinc-100 dark:border-zinc-800 flex flex-col shrink-0 z-20 bg-white dark:bg-zinc-900 relative"
+      onDragEnter={handlePanelDragEnter}
+      onDragOver={handlePanelDragOver}
+      onDragLeave={handlePanelDragLeave}
+      onDrop={handlePanelDrop}
+    >
+      <div
+        className={`absolute inset-0 pointer-events-none transition-opacity duration-150 ${
+          isFileDragActive ? "opacity-100" : "opacity-0"
+        }`}
+      >
+        <div className="absolute inset-2 rounded-2xl border-2 border-dashed border-blue-400 bg-blue-500/5 flex flex-col items-center justify-center text-center gap-2 px-3 text-xs font-medium text-blue-600 dark:text-blue-300">
+          <Upload size={18} />
+          <span>Drop SVGs or images to add them as layers</span>
+        </div>
+      </div>
       <div className="p-4 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
         <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
           Layers
