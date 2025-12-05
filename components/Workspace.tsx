@@ -1069,7 +1069,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
   ) => {
     finishSpline();
     const isText = type === "text";
-    const baseColor = isText ? "#0f172a" : "#3b82f6";
+    const baseColor = isText ? "#1f2937" : "#3b82f6";
     const isLine = type === "line";
     const isFreeform = type === "freeform";
     const isSplineType = type === "spline";
@@ -1223,7 +1223,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
     await importAssetFiles(files);
   };
 
-  const handleFontUpload = async (files: FileList | null) => {
+  const handleFontUpload = async (
+    files: FileList | null,
+    targetElementId?: string
+  ) => {
     if (!files || files.length === 0) return;
     const uploads = Array.from(files);
     const nextFonts: WorkspaceFont[] = [];
@@ -1251,6 +1254,17 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
     }
     if (nextFonts.length === 0) return;
     setCustomFonts((prev) => [...prev, ...nextFonts]);
+
+    if (targetElementId) {
+      const fontToApply = nextFonts[nextFonts.length - 1];
+      const target = findElementById(targetElementId, elements);
+      if (target && target.type === "text") {
+        const updated = updateElementInList(elements, targetElementId, {
+          fontFamily: fontToApply.fontFamily,
+        });
+        pushHistory(updated);
+      }
+    }
   };
 
   const handleCanvasPresetSelect = (presetId: string) => {

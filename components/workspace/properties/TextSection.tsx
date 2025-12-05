@@ -16,7 +16,7 @@ interface TextSectionProps {
   element: VisualizerElement;
   onUpdate: (id: string, updates: Partial<VisualizerElement>) => void;
   fonts: { id: string; name: string; fontFamily: string; isCustom?: boolean }[];
-  onFontUpload: (files: FileList | null) => void;
+  onFontUpload: (files: FileList | null, elementId?: string) => void;
 }
 
 const TextSection: React.FC<TextSectionProps> = ({
@@ -31,7 +31,7 @@ const TextSection: React.FC<TextSectionProps> = ({
 
   const handleFontUpload = (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    onFontUpload(files);
+    onFontUpload(files, id);
   };
 
   return (

@@ -17,7 +17,7 @@ interface WorkspacePropertiesProps {
   onGroup: () => void;
   innerSelectionId?: string | null;
   fonts: { id: string; name: string; fontFamily: string; isCustom?: boolean }[];
-  onFontUpload: (files: FileList | null) => void;
+  onFontUpload: (files: FileList | null, elementId?: string) => void;
 }
 
 const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({
