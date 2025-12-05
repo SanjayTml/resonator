@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { VisualizerElement } from '../../../types';
 import { getDefaultStrokeEnabled } from '../utils';
-import { ColorInput, SectionCard, Toggle, ValueSlider } from '../../ui/primitives';
+import { ColorInput, SectionCard, SelectInput, Toggle, ValueSlider } from '../../ui/primitives';
 
 interface OutlineSectionProps {
   id: string;
@@ -13,6 +13,15 @@ const OutlineSection: React.FC<OutlineSectionProps> = ({ id, element, onUpdate }
   const [open, setOpen] = useState(true);
   const strokeEnabled = element.strokeEnabled ?? getDefaultStrokeEnabled(element.type);
   const strokeColor = element.strokeColor || element.color;
+  const strokeFillType = element.strokeFillType || 'solid';
+  const strokeGradient =
+    element.strokeGradient || ({
+      start: strokeColor,
+      end: strokeColor,
+      angle: 90,
+      type: 'linear',
+    } as NonNullable<VisualizerElement['strokeGradient']>);
+  const strokeGradientMode = strokeGradient.type ?? 'linear';
   const strokeWidthValue = element.type === 'line' ? element.height : element.strokeWidth ?? 2;
 
   const handleStrokeWidthChange = (value: number) => {
@@ -32,23 +41,121 @@ const OutlineSection: React.FC<OutlineSectionProps> = ({ id, element, onUpdate }
       open={open}
       onToggle={setOpen}
       actions={
-        <Toggle
-          checked={strokeEnabled}
-          onCheckedChange={(checked) => onUpdate(id, { strokeEnabled: checked })}
-          aria-label="Toggle outline"
-        />
+        <div className="flex items-center gap-2">
+          <SelectInput
+            size="xs"
+            block={false}
+            value={strokeFillType}
+            onChange={(e) => {
+              const next = e.target.value as 'solid' | 'gradient';
+              const updates: Partial<VisualizerElement> = { strokeFillType: next };
+              if (next === 'gradient' && !element.strokeGradient) {
+                updates.strokeGradient = {
+                  ...strokeGradient,
+                };
+              }
+              onUpdate(id, updates);
+            }}
+          >
+            <option value="solid">Solid</option>
+            <option value="gradient">Gradient</option>
+          </SelectInput>
+          <Toggle
+            checked={strokeEnabled}
+            onCheckedChange={(checked) => onUpdate(id, { strokeEnabled: checked })}
+            aria-label="Toggle outline"
+          />
+        </div>
       }
     >
       <div className={`${strokeEnabled ? '' : 'opacity-40 pointer-events-none'} space-y-3`}>
-        <div className="flex items-center gap-3">
-          <span className="w-16 text-[10px] font-bold uppercase text-zinc-400">Color</span>
-          <ColorInput
-            value={strokeColor}
-            onChange={(value) => onUpdate(id, { strokeColor: value })}
-            swatchSize="sm"
-            className="flex-1"
-          />
-        </div>
+        {strokeFillType === 'gradient' ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <span className="w-16 text-[10px] font-bold uppercase text-zinc-400">Style</span>
+              <SelectInput
+                size="xs"
+                value={strokeGradientMode}
+                onChange={(e) =>
+                  onUpdate(id, {
+                    strokeGradient: {
+                      ...strokeGradient,
+                      type: e.target.value as 'linear' | 'radial',
+                    },
+                  })
+                }
+              >
+                <option value="linear">Linear</option>
+                <option value="radial">Radial</option>
+              </SelectInput>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="w-16 text-[10px] font-bold uppercase text-zinc-400">Start</span>
+              <ColorInput
+                value={strokeGradient.start}
+                onChange={(value) =>
+                  onUpdate(id, {
+                    strokeGradient: {
+                      ...strokeGradient,
+                      start: value,
+                    },
+                  })
+                }
+                swatchSize="sm"
+                className="flex-1"
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="w-16 text-[10px] font-bold uppercase text-zinc-400">End</span>
+              <ColorInput
+                value={strokeGradient.end}
+                onChange={(value) =>
+                  onUpdate(id, {
+                    strokeGradient: {
+                      ...strokeGradient,
+                      end: value,
+                    },
+                  })
+                }
+                swatchSize="sm"
+                className="flex-1"
+              />
+            </div>
+            {strokeGradientMode === 'linear' && (
+              <div className="flex items-center gap-3">
+                <span className="w-16 text-[10px] font-bold uppercase text-zinc-400">Angle</span>
+                <div className="flex-1">
+                  <ValueSlider
+                    value={strokeGradient.angle ?? 90}
+                    onChange={(value) =>
+                      onUpdate(id, {
+                        strokeGradient: {
+                          ...strokeGradient,
+                          angle: value,
+                        },
+                      })
+                    }
+                    min={0}
+                    max={360}
+                    step={1}
+                    suffix="°"
+                    numberInputProps={{ step: 1 }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <span className="w-16 text-[10px] font-bold uppercase text-zinc-400">Color</span>
+            <ColorInput
+              value={strokeColor}
+              onChange={(value) => onUpdate(id, { strokeColor: value })}
+              swatchSize="sm"
+              className="flex-1"
+            />
+          </div>
+        )}
         <div className="flex items-center gap-3">
           <span className="w-16 text-[10px] font-bold uppercase text-zinc-400">Width</span>
           <div className="flex-1">

@@ -404,11 +404,14 @@ export const generateMergedElement = (
     height: height,
     color: topElement.color,
     fillType: topElement.fillType || "solid",
-    gradient: topElement.gradient || {
-      start: topElement.color,
-      end: topElement.color,
-      angle: 90,
-    },
+    gradient: topElement.gradient
+      ? { ...topElement.gradient }
+      : {
+          start: topElement.color,
+          end: topElement.color,
+          angle: 90,
+          type: "linear",
+        },
     fillEnabled:
       topElement.fillEnabled ?? getDefaultFillEnabled(topElement.type),
     strokeEnabled:
@@ -417,6 +420,10 @@ export const generateMergedElement = (
     strokeWidth:
       topElement.strokeWidth ??
       (topElement.type === "line" ? topElement.height : 2),
+    strokeFillType: topElement.strokeFillType || "solid",
+    strokeGradient: topElement.strokeGradient
+      ? { ...topElement.strokeGradient }
+      : undefined,
     rotation: 0,
     opacity: 1,
     animationTracks: [],
@@ -514,11 +521,14 @@ export const generateSubtractedElement = (
     height: height,
     color: baseElement.color,
     fillType: baseElement.fillType || "solid",
-    gradient: baseElement.gradient || {
-      start: baseElement.color,
-      end: baseElement.color,
-      angle: 90,
-    },
+    gradient: baseElement.gradient
+      ? { ...baseElement.gradient }
+      : {
+          start: baseElement.color,
+          end: baseElement.color,
+          angle: 90,
+          type: "linear",
+        },
     fillEnabled:
       baseElement.fillEnabled ?? getDefaultFillEnabled(baseElement.type),
     strokeEnabled:
@@ -527,6 +537,10 @@ export const generateSubtractedElement = (
     strokeWidth:
       baseElement.strokeWidth ??
       (baseElement.type === "line" ? baseElement.height : 2),
+    strokeFillType: baseElement.strokeFillType || "solid",
+    strokeGradient: baseElement.strokeGradient
+      ? { ...baseElement.strokeGradient }
+      : undefined,
     rotation: 0,
     opacity: 1,
     animationTracks: [],

@@ -206,37 +206,63 @@ const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
       } as React.CSSProperties,
     };
 
+    const gradientDefs: React.ReactNode[] = [];
+    const createGradientNode = (id: string, settings: NonNullable<VisualizerElement["gradient"]>) => {
+      const mode = settings.type ?? "linear";
+      if (mode === "radial") {
+        return (
+          <radialGradient id={id} cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+            <stop offset="0%" stopColor={settings.start} />
+            <stop offset="100%" stopColor={settings.end} />
+          </radialGradient>
+        );
+      }
+      return (
+        <linearGradient
+          id={id}
+          x1="0%"
+          y1="0%"
+          x2="100%"
+          y2="0%"
+          gradientTransform={`rotate(${settings.angle || 0})`}
+        >
+          <stop offset="0%" stopColor={settings.start} />
+          <stop offset="100%" stopColor={settings.end} />
+        </linearGradient>
+      );
+    };
+
     const fillActive = isFillActive(el);
     let fillProp: any = { fill: "none" };
-    let defs = null;
     if (fillActive) {
       if (el.fillType === "gradient" && el.gradient) {
-        const gradId = `grad_${el.id}`;
+        const gradId = `grad_fill_${el.id}`;
+        gradientDefs.push(createGradientNode(gradId, el.gradient));
         fillProp = { fill: `url(#${gradId})` };
-        defs = (
-          <defs>
-            <linearGradient
-              id={gradId}
-              x1="0%"
-              y1="0%"
-              x2="100%"
-              y2="0%"
-              gradientTransform={`rotate(${el.gradient.angle || 0})`}
-            >
-              <stop offset="0%" stopColor={el.gradient.start} />
-              <stop offset="100%" stopColor={el.gradient.end} />
-            </linearGradient>
-          </defs>
-        );
       } else {
         fillProp = { fill: el.color };
       }
     }
 
     const strokeActive = isStrokeActive(el);
-    const strokeProp = strokeActive
-      ? { stroke: resolveStrokeColor(el), strokeWidth: resolveStrokeWidth(el) }
-      : { stroke: "none" };
+    let strokeProp: any = { stroke: "none" };
+    if (strokeActive) {
+      if (el.strokeFillType === "gradient" && el.strokeGradient) {
+        const gradId = `grad_stroke_${el.id}`;
+        gradientDefs.push(createGradientNode(gradId, el.strokeGradient));
+        strokeProp = {
+          stroke: `url(#${gradId})`,
+          strokeWidth: resolveStrokeWidth(el),
+        };
+      } else {
+        strokeProp = {
+          stroke: resolveStrokeColor(el),
+          strokeWidth: resolveStrokeWidth(el),
+        };
+      }
+    }
+
+    const defs = gradientDefs.length ? <defs>{gradientDefs}</defs> : null;
 
     let shape;
     if (el.type === "group") {

@@ -12,6 +12,14 @@ interface FillSectionProps {
 const FillSection: React.FC<FillSectionProps> = ({ id, element, onUpdate }) => {
   const [open, setOpen] = useState(true);
   const fillEnabled = element.fillEnabled ?? getDefaultFillEnabled(element.type);
+  const gradientSettings =
+    element.gradient || ({
+      start: element.color,
+      end: element.color,
+      angle: 90,
+      type: 'linear',
+    } as VisualizerElement['gradient']);
+  const gradientMode = gradientSettings.type ?? 'linear';
 
   return (
     <SectionCard
@@ -43,12 +51,37 @@ const FillSection: React.FC<FillSectionProps> = ({ id, element, onUpdate }) => {
         {element.fillType === 'gradient' ? (
           <>
             <div className="flex items-center gap-3">
+              <span className="w-16 text-[10px] font-bold uppercase text-zinc-400">Style</span>
+              <SelectInput
+                size="xs"
+                value={gradientMode}
+                onChange={(e) =>
+                  onUpdate(id, {
+                    gradient: {
+                      ...gradientSettings,
+                      type: e.target.value as 'linear' | 'radial',
+                    },
+                  })
+                }
+              >
+                <option value="linear">Linear</option>
+                <option value="radial">Radial</option>
+              </SelectInput>
+            </div>
+            <div className="flex items-center gap-3">
               <span className="w-16 text-[10px] font-bold uppercase text-zinc-400">Start</span>
               <ColorInput
                 value={element.gradient?.start || element.color}
                 onChange={(value) =>
                   onUpdate(id, {
-                    gradient: { ...(element.gradient || { end: element.color, angle: 90 }), start: value },
+                    gradient: {
+                      ...(element.gradient || {
+                        end: element.color,
+                        angle: 90,
+                        type: 'linear',
+                      }),
+                      start: value,
+                    },
                   })
                 }
                 swatchSize="sm"
@@ -61,31 +94,47 @@ const FillSection: React.FC<FillSectionProps> = ({ id, element, onUpdate }) => {
                 value={element.gradient?.end || element.color}
                 onChange={(value) =>
                   onUpdate(id, {
-                    gradient: { ...(element.gradient || { start: element.color, angle: 90 }), end: value },
+                    gradient: {
+                      ...(element.gradient || {
+                        start: element.color,
+                        angle: 90,
+                        type: 'linear',
+                      }),
+                      end: value,
+                    },
                   })
                 }
                 swatchSize="sm"
                 className="flex-1"
               />
             </div>
-            <div className="flex items-center gap-3">
-              <span className="w-16 text-[10px] font-bold uppercase text-zinc-400">Angle</span>
-              <div className="flex-1">
-                <ValueSlider
-                  value={element.gradient?.angle ?? 90}
-                  onChange={(value) =>
-                    onUpdate(id, {
-                      gradient: { ...(element.gradient || { start: element.color, end: element.color }), angle: value },
-                    })
-                  }
-                  min={0}
-                  max={360}
-                  step={1}
-                  suffix="°"
-                  numberInputProps={{ step: 1 }}
-                />
+            {gradientMode === 'linear' && (
+              <div className="flex items-center gap-3">
+                <span className="w-16 text-[10px] font-bold uppercase text-zinc-400">Angle</span>
+                <div className="flex-1">
+                  <ValueSlider
+                    value={gradientSettings.angle ?? 90}
+                    onChange={(value) =>
+                      onUpdate(id, {
+                        gradient: {
+                          ...(element.gradient || {
+                            start: element.color,
+                            end: element.color,
+                            type: gradientMode,
+                          }),
+                          angle: value,
+                        },
+                      })
+                    }
+                    min={0}
+                    max={360}
+                    step={1}
+                    suffix="°"
+                    numberInputProps={{ step: 1 }}
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </>
         ) : (
           <div className="flex items-center gap-3">

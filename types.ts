@@ -79,6 +79,13 @@ export interface AnimationTrack {
   enabled: boolean;
 }
 
+export interface GradientSettings {
+  start: string;
+  end: string;
+  angle: number;
+  type?: 'linear' | 'radial';
+}
+
 export interface VisualizerElement {
   id: string;
   type: ElementType;
@@ -89,15 +96,13 @@ export interface VisualizerElement {
   height: number;
   color: string;
   fillType: 'solid' | 'gradient';
-  gradient: {
-    start: string;
-    end: string;
-    angle: number;
-  };
+  gradient: GradientSettings;
   fillEnabled?: boolean;
   strokeEnabled?: boolean;
   strokeColor?: string;
   strokeWidth?: number;
+  strokeFillType?: 'solid' | 'gradient';
+  strokeGradient?: GradientSettings;
   rotation: number;
   opacity: number;
   animationTracks: AnimationTrack[];
