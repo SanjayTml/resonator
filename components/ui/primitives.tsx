@@ -58,6 +58,29 @@ export const TextInput = React.forwardRef<HTMLInputElement, TextInputProps>(
 );
 TextInput.displayName = "TextInput";
 
+export interface TextAreaProps
+  extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+  size?: keyof typeof inputSizes;
+  block?: boolean;
+}
+
+export const TextArea = React.forwardRef<HTMLTextAreaElement, TextAreaProps>(
+  ({ size = "sm", className, block = true, ...props }, ref) => (
+    <textarea
+      ref={ref}
+      className={cn(
+        baseInputStyles,
+        inputSizes[size],
+        block ? "w-full" : "w-auto",
+        "min-h-[72px]",
+        className
+      )}
+      {...props}
+    />
+  )
+);
+TextArea.displayName = "TextArea";
+
 export interface NumberInputProps extends TextInputProps {}
 
 export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(

@@ -8,6 +8,7 @@ import TransformSection from "./properties/TransformSection";
 import FillSection from "./properties/FillSection";
 import OutlineSection from "./properties/OutlineSection";
 import AnimationsSection from "./properties/AnimationsSection";
+import TextSection from "./properties/TextSection";
 
 interface WorkspacePropertiesProps {
   selectedIds: Set<string>;
@@ -15,6 +16,8 @@ interface WorkspacePropertiesProps {
   onUpdate: (id: string, updates: Partial<VisualizerElement>) => void;
   onGroup: () => void;
   innerSelectionId?: string | null;
+  fonts: { id: string; name: string; fontFamily: string; isCustom?: boolean }[];
+  onFontUpload: (files: FileList | null) => void;
 }
 
 const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({
@@ -23,6 +26,8 @@ const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({
   onUpdate,
   onGroup,
   innerSelectionId,
+  fonts,
+  onFontUpload,
 }) => {
   const effectiveSelection = innerSelectionId
     ? new Set([innerSelectionId])
@@ -65,8 +70,10 @@ const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({
   const id = Array.from(effectiveSelection)[0] as string;
   const el = findElementById(id, elements);
   if (!el) return null;
-  const supportsFill = el.type !== "line" && el.type !== "image";
-  const supportsOutline = el.type !== "image";
+  const supportsFill =
+    el.type !== "line" && el.type !== "image" && el.type !== "text";
+  const supportsOutline = el.type !== "image" && el.type !== "text";
+  const isTextElement = el.type === "text";
 
   return (
     <div className="w-80 border-l border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col overflow-y-auto shrink-0 z-20 custom-scrollbar">
@@ -81,16 +88,26 @@ const WorkspaceProperties: React.FC<WorkspacePropertiesProps> = ({
 
         <TransformSection id={id} element={el} onUpdate={onUpdate} />
 
-        {el.type !== "group" && (
-          <div className="space-y-4">
-            {supportsFill && (
-              <FillSection id={id} element={el} onUpdate={onUpdate} />
-            )}
+        {isTextElement ? (
+          <TextSection
+            id={id}
+            element={el}
+            onUpdate={onUpdate}
+            fonts={fonts}
+            onFontUpload={onFontUpload}
+          />
+        ) : (
+          el.type !== "group" && (
+            <div className="space-y-4">
+              {supportsFill && (
+                <FillSection id={id} element={el} onUpdate={onUpdate} />
+              )}
 
-            {supportsOutline && (
-              <OutlineSection id={id} element={el} onUpdate={onUpdate} />
-            )}
-          </div>
+              {supportsOutline && (
+                <OutlineSection id={id} element={el} onUpdate={onUpdate} />
+              )}
+            </div>
+          )
         )}
 
         <SectionDivider />

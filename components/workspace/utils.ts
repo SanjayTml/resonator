@@ -101,7 +101,8 @@ export const getDefaultFillEnabled = (type: VisualizerElement["type"]) => {
     type === "line" ||
     type === "freeform" ||
     type === "spline" ||
-    type === "image"
+    type === "image" ||
+    type === "text"
   )
     return false;
   return true;
@@ -109,7 +110,7 @@ export const getDefaultFillEnabled = (type: VisualizerElement["type"]) => {
 
 export const getDefaultStrokeEnabled = (type: VisualizerElement["type"]) => {
   if (type === "line" || type === "freeform" || type === "spline") return true;
-  if (type === "image") return false;
+  if (type === "image" || type === "text") return false;
   return false;
 };
 

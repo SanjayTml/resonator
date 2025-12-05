@@ -24,6 +24,8 @@ import {
   Hand,
   Expand,
   Grid,
+  MonitorSmartphone,
+  Type,
 } from "lucide-react";
 import { ElementType, GridVariant } from "../../types";
 import { Button, IconButton, TextInput } from "../ui/primitives";
@@ -38,13 +40,15 @@ interface WorkspaceHeaderProps {
   setProjectName: (name: string) => void;
   onSave: () => void;
   onImport: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  toolMode: "pointer" | "shape" | "freeform" | "spline";
-  setToolMode: (mode: "pointer" | "shape" | "freeform" | "spline") => void;
+  toolMode: "pointer" | "shape" | "freeform" | "spline" | "text";
+  setToolMode: (
+    mode: "pointer" | "shape" | "freeform" | "spline" | "text"
+  ) => void;
   onGroup: () => void;
   onUngroup: () => void;
   onUnion: () => void;
   onSubtract: () => void;
-  addElement: (type: ElementType) => void;
+  addElement: (type: ElementType, position?: { x: number; y: number }) => void;
   onAssetUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   selectedSplineId?: string;
   resumeSplineEditing: () => void;
@@ -55,6 +59,22 @@ interface WorkspaceHeaderProps {
   onToggleGrid: () => void;
   gridVariant: GridVariant;
   onSelectGridVariant: (variant: GridVariant) => void;
+  canvasSize: {
+    id: string;
+    label: string;
+    description: string;
+    width: number;
+    height: number;
+  };
+  canvasPresets: {
+    id: string;
+    label: string;
+    description: string;
+    width: number;
+    height: number;
+  }[];
+  selectedCanvasPresetId: string;
+  onCanvasPresetSelect: (presetId: string) => void;
 }
 
 const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
@@ -84,6 +104,10 @@ const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
   onToggleGrid,
   gridVariant,
   onSelectGridVariant,
+  canvasSize,
+  canvasPresets,
+  selectedCanvasPresetId,
+  onCanvasPresetSelect,
 }) => {
   const fileProjectImportRef = useRef<HTMLInputElement>(null);
   const svgUploadRef = useRef<HTMLInputElement>(null);
@@ -91,6 +115,8 @@ const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
   const [shapeMenuPinned, setShapeMenuPinned] = useState(false);
   const [gridMenuOpen, setGridMenuOpen] = useState(false);
   const gridMenuRef = useRef<HTMLDivElement>(null);
+  const [sizeMenuOpen, setSizeMenuOpen] = useState(false);
+  const sizeMenuRef = useRef<HTMLDivElement>(null);
   const hideShapeMenuTimeout = useRef<NodeJS.Timeout | null>(null);
   const GRID_VARIANTS: {
     id: GridVariant;
@@ -164,6 +190,20 @@ const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [gridMenuOpen]);
+
+  useEffect(() => {
+    if (!sizeMenuOpen) return;
+    const handleClick = (event: MouseEvent) => {
+      if (
+        sizeMenuRef.current &&
+        !sizeMenuRef.current.contains(event.target as Node)
+      ) {
+        setSizeMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [sizeMenuOpen]);
 
   return (
     <div className="h-16 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between px-6 shrink-0 bg-white dark:bg-zinc-900 z-30">
@@ -251,6 +291,16 @@ const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
             aria-label="Pointer tool"
           >
             {isPanMode ? <Hand size={16} /> : <MousePointer2 size={16} />}
+          </IconButton>
+          <IconButton
+            onClick={() =>
+              setToolMode(toolMode === "text" ? "pointer" : "text")
+            }
+            active={toolMode === "text"}
+            title="Text Tool"
+            aria-label="Text tool"
+          >
+            <Type size={16} />
           </IconButton>
           <IconButton
             onClick={() => setToolMode("freeform")}
@@ -418,6 +468,68 @@ const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
           >
             <Expand size={16} />
           </IconButton>
+        </div>
+
+        <div className="h-6 w-px bg-zinc-200 dark:bg-zinc-800"></div>
+
+        <div className="flex items-center gap-2">
+          <div className="relative" ref={sizeMenuRef}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="px-3 py-2 h-auto rounded-lg flex items-center gap-2 text-xs font-semibold border border-transparent hover:border-zinc-200 dark:hover:border-zinc-700"
+              onClick={() => setSizeMenuOpen((prev) => !prev)}
+              aria-haspopup="menu"
+              aria-expanded={sizeMenuOpen}
+              title="Select canvas size"
+            >
+              <MonitorSmartphone size={16} className="text-zinc-400" />
+              <span className="hidden sm:inline text-zinc-700 dark:text-zinc-200">
+                {canvasSize.label}
+              </span>
+              <span className="font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
+                {canvasSize.width}×{canvasSize.height}
+              </span>
+              <ChevronDown size={12} className="text-zinc-400" />
+            </Button>
+            <div
+              className={`absolute right-0 top-full mt-2 w-72 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl p-1 z-50 transition-all duration-150 ${
+                sizeMenuOpen
+                  ? "opacity-100 visible translate-y-0"
+                  : "opacity-0 invisible -translate-y-1 pointer-events-none"
+              }`}
+            >
+              {canvasPresets.map((preset) => {
+                const isActive = preset.id === selectedCanvasPresetId;
+                return (
+                  <button
+                    key={preset.id}
+                    onClick={() => {
+                      onCanvasPresetSelect(preset.id);
+                      setSizeMenuOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center justify-between gap-3 ${
+                      isActive
+                        ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white"
+                        : "text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                    }`}
+                  >
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold">
+                        {preset.label}
+                      </span>
+                      <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                        {preset.description}
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400">
+                      {preset.width}×{preset.height}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
 

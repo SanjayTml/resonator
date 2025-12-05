@@ -45,7 +45,8 @@ export type ElementType =
   | 'custom'
   | 'image'
   | 'freeform'
-  | 'spline';
+  | 'spline'
+  | 'text';
 export type FrequencyRange = 'bass' | 'mid' | 'high';
 export type Alignment = 'top' | 'middle' | 'bottom' | 'left' | 'center' | 'right';
 export type GridVariant = 'straight' | 'diagonal' | 'dots';
@@ -123,11 +124,27 @@ export interface VisualizerElement {
   isClosed?: boolean;
   // Boolean Ops / Masking
   maskId?: string; // ID of the element masking this one (Subtraction)
+  // Text properties
+  textContent?: string;
+  fontFamily?: string;
+  fontSize?: number;
+  fontWeight?: number;
+  textAlign?: 'left' | 'center' | 'right';
+  letterSpacing?: number;
+  lineHeight?: number;
 }
 
 export interface WorkspaceProject {
   name: string;
   elements: VisualizerElement[];
+  fonts?: WorkspaceFont[];
+}
+
+export interface WorkspaceFont {
+  id: string;
+  name: string;
+  fontFamily: string;
+  dataUrl: string;
 }
 
 export type DragMode = 'move' | 'resize-tl' | 'resize-tr' | 'resize-bl' | 'resize-br' | 'create-tangent' | 'edit-point' | 'edit-handle-in' | 'edit-handle-out' | 'marquee' | null;

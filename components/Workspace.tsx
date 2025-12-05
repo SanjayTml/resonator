@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   VisualizerElement,
   ElementType,
@@ -7,6 +7,7 @@ import {
   Alignment,
   GridVariant,
 } from "../types";
+import { WorkspaceFont } from "../types";
 import {
   generateMergedElement,
   generateSubtractedElement,
@@ -69,6 +70,71 @@ interface SnapGuideState {
   objectId?: string;
 }
 
+const CANVAS_SIZE_PRESETS = [
+  {
+    id: "desktop",
+    label: "Desktop",
+    description: "1440 x 900 workspace",
+    width: 1440,
+    height: 900,
+  },
+  {
+    id: "landscape",
+    label: "Landscape 16:9",
+    description: "1280 x 720 widescreen",
+    width: 1280,
+    height: 720,
+  },
+  {
+    id: "portrait",
+    label: "Portrait 9:16",
+    description: "1080 x 1920 vertical",
+    width: 1080,
+    height: 1920,
+  },
+  {
+    id: "square",
+    label: "Square",
+    description: "1200 x 1200",
+    width: 1200,
+    height: 1200,
+  },
+  {
+    id: "polaroid",
+    label: "Polaroid",
+    description: "900 x 1100 classic",
+    width: 900,
+    height: 1100,
+  },
+] as const;
+
+type CanvasPreset = (typeof CANVAS_SIZE_PRESETS)[number];
+
+interface FontOption {
+  id: string;
+  name: string;
+  fontFamily: string;
+  isCustom?: boolean;
+}
+
+const DEFAULT_FONT_OPTIONS: FontOption[] = [
+  {
+    id: "font-inter",
+    name: "Inter",
+    fontFamily: "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif",
+  },
+  {
+    id: "font-georgia",
+    name: "Georgia",
+    fontFamily: "Georgia, 'Times New Roman', serif",
+  },
+  {
+    id: "font-mono",
+    name: "Monospace",
+    fontFamily: "'JetBrains Mono', 'SFMono-Regular', Menlo, monospace",
+  },
+];
+
 const flattenElementsList = (list: VisualizerElement[]): VisualizerElement[] => {
   const result: VisualizerElement[] = [];
   const walk = (items: VisualizerElement[]) => {
@@ -105,6 +171,15 @@ const SUPPORTED_IMAGE_EXTENSIONS = new Set([
   "webp",
   "svg",
 ]);
+
+const SUPPORTED_FONT_EXTENSIONS = new Set([
+  "ttf",
+  "otf",
+  "woff",
+  "woff2",
+]);
+
+const MAX_FONT_SIZE_BYTES = 15 * 1024 * 1024;
 
 const isSvgFile = (file: File) =>
   file.type === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg");
@@ -543,7 +618,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
     y: 0,
   });
   const [toolMode, setToolMode] = useState<
-    "pointer" | "shape" | "freeform" | "spline"
+    "pointer" | "shape" | "freeform" | "spline" | "text"
   >("pointer");
   const [canvasScale, setCanvasScale] = useState(1);
   const [canvasOffset, setCanvasOffset] = useState({ x: 0, y: 0 });
@@ -553,6 +628,23 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
   const [gridVariant, setGridVariant] = useState<GridVariant>("straight");
   const [snapGuides, setSnapGuides] = useState<SnapGuideState | null>(null);
   const [graphEnabled, setGraphEnabled] = useState(true);
+  const [canvasPresetId, setCanvasPresetId] = useState<string>(
+    CANVAS_SIZE_PRESETS[0].id
+  );
+  const [customFonts, setCustomFonts] = useState<WorkspaceFont[]>([]);
+  const loadedFontIds = useRef<Set<string>>(new Set());
+
+  const availableFonts = useMemo<FontOption[]>(() => {
+    return [
+      ...DEFAULT_FONT_OPTIONS,
+      ...customFonts.map<FontOption>((font) => ({
+        id: font.id,
+        name: font.name,
+        fontFamily: font.fontFamily,
+        isCustom: true,
+      })),
+    ];
+  }, [customFonts]);
 
   // Selection Box State
   const [selectionBox, setSelectionBox] = useState<SelectionBox>({
@@ -579,6 +671,33 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
   const panOffsetRef = useRef({ x: 0, y: 0 });
 
   const animationFrameRef = useRef<number>(0);
+
+  const activeCanvasPreset:
+    | CanvasPreset
+    | (typeof CANVAS_SIZE_PRESETS)[number] =
+    CANVAS_SIZE_PRESETS.find((preset) => preset.id === canvasPresetId) ||
+    CANVAS_SIZE_PRESETS[0];
+
+  useEffect(() => {
+    if (typeof FontFace === "undefined" || !document.fonts) return;
+    customFonts.forEach((font) => {
+      if (loadedFontIds.current.has(font.id)) return;
+      try {
+        const face = new FontFace(font.fontFamily, `url(${font.dataUrl})`);
+        face
+          .load()
+          .then((loaded) => {
+            document.fonts.add(loaded);
+            loadedFontIds.current.add(font.id);
+          })
+          .catch((err) => {
+            console.error(`Failed to load font ${font.name}`, err);
+          });
+      } catch (err) {
+        console.error(`Unable to register font ${font.name}`, err);
+      }
+    });
+  }, [customFonts]);
 
   const getOutermostGroupId = (elementId: string): string | null => {
     const ancestors = findGroupAncestors(elements, elementId);
@@ -715,7 +834,12 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
   };
 
   const handleSaveProject = () => {
-    const project = { name: projectName, elements, version: "1.0" };
+    const project = {
+      name: projectName,
+      elements,
+      fonts: customFonts,
+      version: "1.0",
+    };
     const blob = new Blob([JSON.stringify(project, null, 2)], {
       type: "application/json",
     });
@@ -738,6 +862,11 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
           const project = JSON.parse(content) as any;
           if (project.elements) {
             pushHistory(project.elements);
+            if (Array.isArray(project.fonts)) {
+              setCustomFonts(project.fonts);
+            } else {
+              setCustomFonts([]);
+            }
             if (project.name) setProjectName(project.name);
             setSelectedIds(new Set());
           }
@@ -884,6 +1013,15 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
           }
         }
 
+        if (el.type === "text") {
+          const textNode = innerNode.querySelector<HTMLElement>(
+            "[data-text-node]"
+          );
+          if (textNode) {
+            textNode.style.color = colorOverride ?? el.color;
+          }
+        }
+
         // Handle Layer Animation (Direct DOM Manipulation)
         if (layerCommand && wrapper && wrapper.parentNode) {
           const container = wrapper.parentNode as Element;
@@ -925,24 +1063,33 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
   }, [elements]);
 
   // --- CRUD Operations ---
-  const addElement = (type: ElementType) => {
+  const addElement = (
+    type: ElementType,
+    position?: { x: number; y: number }
+  ) => {
     finishSpline();
-    const baseColor = "#3b82f6";
+    const isText = type === "text";
+    const baseColor = isText ? "#0f172a" : "#3b82f6";
     const isLine = type === "line";
     const isFreeform = type === "freeform";
     const isSplineType = type === "spline";
     const isPathLike = isLine || isFreeform || isSplineType;
     const defaultFillEnabled =
-      type === "group" ? false : !isLine && !isFreeform && !isSplineType;
-    const defaultStrokeEnabled = type === "group" ? false : isPathLike;
+      type === "group"
+        ? false
+        : !isLine && !isFreeform && !isSplineType && !isText;
+    const defaultStrokeEnabled =
+      type === "group" ? false : isPathLike && !isText;
+    const defaultFontStack =
+      availableFonts[0]?.fontFamily || "Inter, system-ui, sans-serif";
     const newEl: VisualizerElement = {
       id: Math.random().toString(36).substring(2, 11),
       type,
       name: `${type.charAt(0).toUpperCase() + type.slice(1)}`,
-      x: 0.5,
-      y: 0.5,
-      width: 100,
-      height: isLine ? 4 : 100,
+      x: position?.x ?? 0.5,
+      y: position?.y ?? 0.5,
+      width: isText ? 360 : 100,
+      height: isLine ? 4 : isText ? 140 : 100,
       color: baseColor,
       fillType: "solid",
       gradient: { start: baseColor, end: baseColor, angle: 90 },
@@ -955,6 +1102,20 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
       animationTracks: [],
       children: type === "group" ? [] : undefined,
     };
+
+    if (isText) {
+      newEl.name = "Text";
+      newEl.fillEnabled = false;
+      newEl.strokeEnabled = false;
+      newEl.strokeWidth = 0;
+      newEl.textContent = "Text";
+      newEl.fontFamily = defaultFontStack;
+      newEl.fontSize = 64;
+      newEl.fontWeight = 600;
+      newEl.textAlign = "center";
+      newEl.letterSpacing = 0;
+      newEl.lineHeight = 1.1;
+    }
     pushHistory([...elements, newEl]);
     setSelectedIds(new Set([newEl.id]));
   };
@@ -1060,6 +1221,44 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
 
   const handleAssetDrop = async (files: FileList) => {
     await importAssetFiles(files);
+  };
+
+  const handleFontUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const uploads = Array.from(files);
+    const nextFonts: WorkspaceFont[] = [];
+    for (const file of uploads) {
+      const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+      if (!SUPPORTED_FONT_EXTENSIONS.has(ext)) {
+        console.warn(`${file.name} is not a supported font type.`);
+        continue;
+      }
+      if (file.size > MAX_FONT_SIZE_BYTES) {
+        alert(`${file.name} is too large. Max font size is 15MB.`);
+        continue;
+      }
+      try {
+        const dataUrl = await readFileAsDataUrl(file);
+        const baseName = file.name.replace(/\.[^/.]+$/, "") || "Custom Font";
+        const fontId = `font_${randomId()}`;
+        const normalized =
+          baseName.replace(/[^a-z0-9]+/gi, "").slice(0, 24) || "Font";
+        const fontFamily = `RF_${normalized}_${fontId}`;
+        nextFonts.push({ id: fontId, name: baseName, fontFamily, dataUrl });
+      } catch (err) {
+        console.error(`Failed to load font ${file.name}`, err);
+      }
+    }
+    if (nextFonts.length === 0) return;
+    setCustomFonts((prev) => [...prev, ...nextFonts]);
+  };
+
+  const handleCanvasPresetSelect = (presetId: string) => {
+    const preset = CANVAS_SIZE_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+    setCanvasPresetId(presetId);
+    setCanvasScale(1);
+    setCanvasOffset({ x: 0, y: 0 });
   };
 
   const deleteSelected = () => {
@@ -1422,6 +1621,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
         if (toolMode === "spline") {
           finishSpline();
           setToolMode("pointer");
+        } else if (toolMode === "text") {
+          setToolMode("pointer");
         } else if (activeGroupEdit) {
           const currentGroup = activeGroupEdit;
           exitGroupEditMode();
@@ -1635,6 +1836,14 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
       }
 
       if (!id && !mode) {
+        if (toolMode === "text" && svgRef.current) {
+          const rect = svgRef.current.getBoundingClientRect();
+          const normX = (e.clientX - rect.left) / rect.width;
+          const normY = (e.clientY - rect.top) / rect.height;
+          addElement("text", { x: normX, y: normY });
+          setToolMode("pointer");
+          return;
+        }
         // Background Click
         if (toolMode === "pointer") {
           finishSpline();
@@ -2169,6 +2378,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
           onToggleGrid={() => setShowGrid((prev) => !prev)}
           gridVariant={gridVariant}
           onSelectGridVariant={setGridVariant}
+          canvasSize={activeCanvasPreset}
+          canvasPresets={CANVAS_SIZE_PRESETS}
+          selectedCanvasPresetId={canvasPresetId}
+          onCanvasPresetSelect={handleCanvasPresetSelect}
         />
 
         <div className="flex-1 flex overflow-hidden">
@@ -2209,13 +2422,15 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
                 onSplinePointMouseDown={handleSplinePointMouseDown}
                 selectionBox={selectionBox}
                 canvasScale={canvasScale}
-                        canvasOffset={canvasOffset}
-                        isPanning={isPanning}
-                        isSpacePressed={isSpacePressed}
-                        showGrid={showGrid}
-                        gridVariant={gridVariant}
-                        snapGuides={snapGuides}
-                    />
+                canvasOffset={canvasOffset}
+                isPanning={isPanning}
+                isSpacePressed={isSpacePressed}
+                showGrid={showGrid}
+                gridVariant={gridVariant}
+                snapGuides={snapGuides}
+                canvasWidth={activeCanvasPreset.width}
+                canvasHeight={activeCanvasPreset.height}
+              />
             </div>
 
             {/* Footer Container - Static below canvas */}
@@ -2237,6 +2452,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ onClose, isDarkMode }) => {
               pushHistory(newEls);
             }}
             onGroup={handleGroup}
+            fonts={availableFonts}
+            onFontUpload={handleFontUpload}
           />
         </div>
       </div>

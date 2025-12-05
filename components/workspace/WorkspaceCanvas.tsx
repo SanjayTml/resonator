@@ -47,6 +47,8 @@ interface WorkspaceCanvasProps {
   showGrid: boolean;
   gridVariant: GridVariant;
   snapGuides?: SnapGuideOverlay | null;
+  canvasWidth: number;
+  canvasHeight: number;
 }
 
 const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
@@ -67,10 +69,14 @@ const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
   showGrid,
   gridVariant,
   snapGuides,
+  canvasWidth,
+  canvasHeight,
 }) => {
   const transformStyle: React.CSSProperties = {
     transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px) scale(${canvasScale})`,
     transformOrigin: "0 0",
+    width: canvasWidth,
+    height: canvasHeight,
   };
   const panCursor = isPanning
     ? "grabbing"
@@ -366,6 +372,49 @@ const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
           {...commonProps}
         />
       );
+    } else if (el.type === "text") {
+      const textAlign = el.textAlign ?? "center";
+      const justifyContent =
+        textAlign === "left"
+          ? "flex-start"
+          : textAlign === "right"
+          ? "flex-end"
+          : "center";
+      const fontStack = el.fontFamily || "Inter, system-ui, sans-serif";
+      shape = (
+        <foreignObject
+          data-shape-root
+          x={-el.width / 2}
+          y={-el.height / 2}
+          width={el.width}
+          height={el.height}
+          {...commonProps}
+        >
+          <div
+            data-text-node
+            xmlns="http://www.w3.org/1999/xhtml"
+            style={{
+              width: "100%",
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent,
+              color: el.color,
+              fontFamily: fontStack,
+              fontWeight: el.fontWeight ?? 600,
+              fontSize: `${el.fontSize ?? 64}px`,
+              lineHeight: el.lineHeight ?? 1.1,
+              letterSpacing: `${el.letterSpacing ?? 0}px`,
+              textAlign,
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              padding: "4px",
+            }}
+          >
+            {el.textContent ?? "Text"}
+          </div>
+        </foreignObject>
+      );
     }
 
     const isInnerSelected = innerSelectionId === el.id;
@@ -526,7 +575,7 @@ const WorkspaceCanvas: React.FC<WorkspaceCanvasProps> = ({
         onContextMenu={(e) => onContextMenu(e)}
         style={{ cursor: panCursor }}
       >
-        <div className="relative w-full h-full" style={transformStyle}>
+        <div className="relative" style={transformStyle}>
           {showGrid && (
             <div
               className="absolute inset-0 opacity-[0.04] dark:opacity-[0.08] pointer-events-none text-zinc-900 dark:text-zinc-100 transition-opacity"
