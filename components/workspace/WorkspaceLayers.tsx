@@ -20,7 +20,7 @@ import {
   ChartNoAxesColumn,
 } from "lucide-react";
 import { AudioSourceType, VisualizerElement } from "../../types";
-import { Button, IconButton, Slider } from "../ui/primitives";
+import { Button, IconButton, Slider, InfoDialog } from "../ui/primitives";
 import { findGroupAncestors } from "./elementTree";
 
 interface WorkspaceLayersProps {
@@ -331,6 +331,20 @@ const WorkspaceLayers: React.FC<WorkspaceLayersProps> = ({
         <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
           Layers
         </span>
+        <InfoDialog
+          title="Layer Stack"
+          description="Manage the draw order for every element in your scene."
+        >
+          <p>
+            Drag layers to reorder them, expand groups to dive deeper, and drop images or SVGs directly on this
+            panel to add them to the composition.
+          </p>
+          <ul className="list-disc pl-4 space-y-1">
+            <li>Higher entries render on top of lower ones.</li>
+            <li>Click to select, shift-click for multi-select, or right-click for context tools.</li>
+            <li>Use the audio controls below to audition input sources while watching the stack.</li>
+          </ul>
+        </InfoDialog>
       </div>
       <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
         {[...elements].reverse().map((el) => renderLayer(el, 0, true))}

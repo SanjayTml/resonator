@@ -1,4 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
+import { createPortal } from "react-dom";
+import { Info, X } from "lucide-react";
 import { cn } from "./cn";
 
 const inputSizes = {
@@ -205,6 +207,85 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
   }
 );
 IconButton.displayName = "IconButton";
+
+interface InfoDialogProps {
+  title: string;
+  description?: React.ReactNode;
+  children?: React.ReactNode;
+  triggerAriaLabel?: string;
+  triggerClassName?: string;
+}
+
+export const InfoDialog: React.FC<InfoDialogProps> = ({
+  title,
+  description,
+  children,
+  triggerAriaLabel,
+  triggerClassName,
+}) => {
+  const [open, setOpen] = useState(false);
+  const canRenderPortal = typeof document !== "undefined";
+
+  const modal =
+    open && canRenderPortal
+      ? createPortal(
+          <div className="fixed inset-0 z-[999] flex items-center justify-center px-4 py-6">
+            <div
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setOpen(false)}
+            />
+            <div className="relative w-full max-w-md rounded-3xl border border-zinc-200 bg-white/95 p-6 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900/95 space-y-4 text-zinc-600 dark:text-zinc-300">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                    Feature Guide
+                  </div>
+                  <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+                    {title}
+                  </h3>
+                  {description && (
+                    <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1 leading-relaxed">
+                      {description}
+                    </p>
+                  )}
+                </div>
+                <IconButton
+                  size="sm"
+                  aria-label="Close info dialog"
+                  onClick={() => setOpen(false)}
+                >
+                  <X size={14} />
+                </IconButton>
+              </div>
+              <div className="text-sm leading-relaxed space-y-3">
+                {children}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      : null;
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(true);
+        }}
+        aria-label={triggerAriaLabel || `Learn more about ${title}`}
+        className={cn(
+          "inline-flex h-5 w-5 items-center justify-center rounded-full border border-transparent text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 disabled:opacity-50 dark:text-zinc-500 dark:hover:text-zinc-100 dark:hover:bg-zinc-800",
+          triggerClassName
+        )}
+      >
+        <Info size={12} />
+      </button>
+      {modal}
+    </>
+  );
+};
 
 export interface CheckboxProps
   extends React.InputHTMLAttributes<HTMLInputElement> {

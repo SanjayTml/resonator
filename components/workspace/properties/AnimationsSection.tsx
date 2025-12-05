@@ -11,6 +11,7 @@ import {
   ColorInput,
   FormField,
   IconButton,
+  InfoDialog,
   NumberInput,
   SectionCard,
   SelectInput,
@@ -56,7 +57,30 @@ const AnimationsSection: React.FC<AnimationsSectionProps> = ({ id, element, elem
     <SectionCard
       title={
         <span className="inline-flex items-center gap-2">
-          <Activity size={14} className="text-zinc-500" /> Animations
+          <Activity size={14} className="text-zinc-500" />
+          <span>Animations</span>
+          <InfoDialog
+            title="Animation Tracks"
+            description="Drive any property over time or directly from the audio analyser."
+          >
+            <p>
+              Add multiple tracks to the same element—each track targets a single property (scale, rotation,
+              opacity, etc.) and can be driven by either looping time or a slice of the audio spectrum.
+            </p>
+            <ul className="list-disc pl-4 space-y-1">
+              <li>
+                <strong>Driver:</strong> choose <em>Audio React</em> to respond to live sound or <em>Loop</em> for
+                deterministic motion.
+              </li>
+              <li>
+                <strong>Frequency range:</strong> when using audio, isolate bass/mid/high energy to avoid muddy
+                motion.
+              </li>
+              <li>
+                <strong>Keyframes:</strong> adjust value + offset pairs to sculpt easing and behavior.
+              </li>
+            </ul>
+          </InfoDialog>
         </span>
       }
       collapsible
@@ -206,7 +230,29 @@ const AnimationsSection: React.FC<AnimationsSectionProps> = ({ id, element, elem
               )}
 
               <div className="mt-2">
-                <div className="text-[10px] font-bold text-zinc-500 uppercase mb-1">Timeline</div>
+                <div className="text-[10px] font-bold text-zinc-500 uppercase mb-1 flex items-center gap-1">
+                  Timeline
+                  <InfoDialog
+                    title="Timeline Editor"
+                    description="Place and adjust keyframes along the animation duration."
+                    triggerClassName="h-4 w-4"
+                  >
+                    <p>
+                      Click anywhere on the bar to add a new keyframe. Drag keyframes (coming soon) or edit their
+                      offset/value underneath for precise control.
+                    </p>
+                    <ul className="list-disc pl-4 space-y-1">
+                      <li>
+                        Time drivers use milliseconds; audio drivers treat offsets as percentages across live
+                        energy samples.
+                      </li>
+                      <li>
+                        Keyframe order matters: offsets are sorted to keep playback consistent.
+                      </li>
+                      <li>Use multiple keyframes to create hold, ramp, or bounce behaviors.</li>
+                    </ul>
+                  </InfoDialog>
+                </div>
                 <div
                   className="h-6 relative flex items-center cursor-pointer group/timeline"
                   onClick={(e) => {

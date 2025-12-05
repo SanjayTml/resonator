@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ChartNoAxesColumn } from "lucide-react";
+import { InfoDialog } from "../ui/primitives";
 
 interface RealTimeAudioGraphProps {
   analyserRef: React.MutableRefObject<AnalyserNode | null>;
@@ -117,6 +118,21 @@ const RealTimeAudioGraph: React.FC<RealTimeAudioGraphProps> = ({
 
       {/* Indicator */}
       <div className="absolute top-1.5 right-1.5 flex items-center gap-2">
+        <InfoDialog
+          title="Spectrum Graph"
+          description="Live FFT data mapped to 0-22kHz to preview how audio energy moves across the spectrum."
+          triggerClassName="h-6 w-6 text-zinc-200/80 hover:text-white/90 hover:bg-white/10"
+        >
+          <p>
+            Use the graph to spot which frequency ranges are most active and target them in audio-reactive
+            animation tracks.
+          </p>
+          <ul className="list-disc pl-4 space-y-1">
+            <li>Toggle the monitor with the Spectrum switch in the layers panel footer.</li>
+            <li>Each bar aggregates roughly {FREQUENCY_STEP} Hz to keep the UI readable.</li>
+            <li>The glowing dot mirrors playback status so you know when the analyser is live.</li>
+          </ul>
+        </InfoDialog>
         <span
           className={`inline-flex h-2.5 w-2.5 rounded-full shadow-[0_0_6px] ${
             isPlaying && graphEnabled
